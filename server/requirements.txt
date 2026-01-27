@@ -1,0 +1,81 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+python-multipart
+sse-starlette
+
+# LangChain & LangGraph
+langgraph
+langchain
+langchain-openai
+langchain-anthropic
+langsmith
+
+# Database
+sqlalchemy
+asyncpg
+alembic
+psycopg2-binary
+
+# Vector Store
+pgvector
+
+# Redis
+redis
+hiredis
+
+# Auth & Security
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
+
+# Pydantic
+pydantic
+pydantic-settings
+pydantic[email]
+
+# Utilities
+python-dotenv
+structlog
+tenacity
+httpx
+
+# Code Processing
+tree-sitter
+tree-sitter-python
+gitpython
+
+# Embeddings & Vector
+tiktoken
+numpy
+openai
+anthropic
+
+# Date/Time
+python-dateutil
+
+# JSON & Data
+orjson
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+pytest-mock
+httpx
+
+# Code Quality
+black
+ruff
+mypy
+isort
+
+# Type Stubs
+types-redis
+types-passlib
+sqlalchemy[mypy]
+
+# Development Tools
+ipython
+ipdb
+watchdog
