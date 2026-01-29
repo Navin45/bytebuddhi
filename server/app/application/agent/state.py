@@ -43,6 +43,9 @@ class AgentState(TypedDict):
     # Retrieved code context
     retrieved_context: List[Dict[str, Any]]
     
+    # Web search results
+    search_results: Optional[Dict[str, Any]]
+    
     # Generated outputs
     generated_code: Optional[str]
     explanation: Optional[str]
@@ -66,6 +69,7 @@ class IntentType:
     CODE_DEBUG = "code_debug"
     CODE_REFACTOR = "code_refactor"
     QUESTION_ANSWER = "question_answer"
+    WEB_SEARCH = "web_search"
     GENERAL_CHAT = "general_chat"
     
     @classmethod
@@ -81,5 +85,6 @@ class IntentType:
             cls.CODE_DEBUG,
             cls.CODE_REFACTOR,
             cls.QUESTION_ANSWER,
+            cls.WEB_SEARCH,
             cls.GENERAL_CHAT,
         ]

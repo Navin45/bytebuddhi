@@ -5,13 +5,14 @@ the ByteBuddhi agent graph. Each node performs a specific task in the
 agent's workflow.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.application.agent.state import AgentState, IntentType
 from app.application.ports.output.llm.llm_provider import LLMProvider
 from app.infrastructure.config.logger import get_logger
+from app.infrastructure.external.tavily_search import TavilySearchService
 
 logger = get_logger(__name__)
 
@@ -23,13 +24,19 @@ class AgentNodes:
     Nodes take the current state and return an updated state.
     """
 
-    def __init__(self, llm_provider: LLMProvider):
-        """Initialize agent nodes with LLM provider.
+    def __init__(
+        self,
+        llm_provider: LLMProvider,
+        search_service: Optional[TavilySearchService] = None,
+    ):
+        """Initialize agent nodes with LLM provider and search service.
         
         Args:
             llm_provider: LLM provider for generating responses
+            search_service: Optional Tavily search service for web searches
         """
         self.llm = llm_provider
+        self.search_service = search_service
 
     async def classify_intent(self, state: AgentState) -> Dict:
         """Classify the user's intent.
@@ -54,6 +61,7 @@ class AgentNodes:
 - code_debug: User needs help debugging an issue
 - code_refactor: User wants to improve/refactor code
 - question_answer: User has a general programming question
+- web_search: User is asking about current information, latest updates, or needs real-time data
 - general_chat: General conversation
 
 User request: {user_query}
@@ -98,6 +106,50 @@ Respond with only the category name."""
         
         return {"retrieved_context": retrieved_context}
 
+    async def web_search(self, state: AgentState) -> Dict:
+        """Perform web search using Tavily.
+        
+        This node uses the Tavily API to search the web for information
+        relevant to the user's query.
+        
+        Args:
+            state: Current agent state
+            
+        Returns:
+            Dict: Updated state with search results
+        """
+        logger.info("Performing web search")
+        
+        if not self.search_service:
+            logger.warning("Web search requested but Tavily service not configured")
+            return {
+                "search_results": None,
+                "error": "Web search is not configured",
+            }
+        
+        user_query = state["user_query"]
+        
+        try:
+            # Perform search
+            search_response = await self.search_service.search(
+                query=user_query,
+                include_answer=True,
+            )
+            
+            logger.info(
+                "Web search completed",
+                num_results=len(search_response.get("results", [])),
+            )
+            
+            return {"search_results": search_response}
+            
+        except Exception as e:
+            logger.error("Web search failed", error=str(e))
+            return {
+                "search_results": None,
+                "error": f"Web search failed: {str(e)}",
+            }
+
     async def generate_response(self, state: AgentState) -> Dict:
         """Generate the final response to the user.
         
@@ -115,6 +167,7 @@ Respond with only the category name."""
         user_query = state["user_query"]
         intent = state.get("intent", IntentType.GENERAL_CHAT)
         context = state.get("retrieved_context", [])
+        search_results = state.get("search_results")
         
         # Build response prompt based on intent
         if intent == IntentType.CODE_GENERATION:
@@ -125,6 +178,8 @@ Respond with only the category name."""
             system_prompt = "You are an expert debugger. Help identify and fix issues in code."
         elif intent == IntentType.CODE_REFACTOR:
             system_prompt = "You are an expert in code quality. Suggest improvements and refactorings."
+        elif intent == IntentType.WEB_SEARCH:
+            system_prompt = "You are a helpful assistant with access to current web information. Provide accurate, up-to-date answers based on the search results."
         else:
             system_prompt = "You are a helpful programming assistant."
         
@@ -134,6 +189,11 @@ Respond with only the category name."""
             context_text = "\n\nRelevant code context:\n" + "\n\n".join(
                 [f"```\n{chunk.get('content', '')}\n```" for chunk in context]
             )
+        
+        # Add search results if available
+        if search_results and self.search_service:
+            search_context = self.search_service.format_results_for_context(search_results)
+            context_text += f"\n\n{search_context}"
         
         # Build messages
         messages = [

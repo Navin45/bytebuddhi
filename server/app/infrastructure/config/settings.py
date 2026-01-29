@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = None
     anthropic_model: str = "claude-3-5-sonnet-20241022"
 
+    # Tavily Search
+    tavily_api_key: Optional[str] = None
+    tavily_max_results: int = 5
+
     # LangSmith
     langchain_tracing_v2: bool = True
     langchain_endpoint: str = "https://api.smith.langchain.com"

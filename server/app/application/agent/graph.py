@@ -27,9 +27,13 @@ def should_retrieve_context(state: AgentState) -> str:
         state: Current agent state
         
     Returns:
-        str: Next node name ('retrieve_context' or 'generate_response')
+        str: Next node name ('retrieve_context', 'web_search', or 'generate_response')
     """
     intent = state.get("intent")
+    
+    # Perform web search for web_search intent
+    if intent == IntentType.WEB_SEARCH:
+        return "web_search"
     
     # Retrieve context for code-related intents
     if intent in [
@@ -46,6 +50,7 @@ def should_retrieve_context(state: AgentState) -> str:
 def create_agent_graph(
     llm_provider: LLMProvider,
     checkpoint_saver: Optional[BaseCheckpointSaver] = None,
+    search_service = None,
 ) -> StateGraph:
     """Create the ByteBuddhi agent graph.
     
@@ -54,13 +59,14 @@ def create_agent_graph(
     
     The workflow is:
     1. Classify user intent
-    2. Conditionally retrieve code context
+    2. Conditionally retrieve code context or perform web search
     3. Generate response
     4. Handle errors if they occur
     
     Args:
         llm_provider: LLM provider for the agent
         checkpoint_saver: Optional checkpoint saver for state persistence
+        search_service: Optional Tavily search service for web searches
         
     Returns:
         StateGraph: Compiled agent graph ready for execution
@@ -68,7 +74,7 @@ def create_agent_graph(
     logger.info("Creating agent graph", with_checkpoints=checkpoint_saver is not None)
     
     # Initialize nodes
-    nodes = AgentNodes(llm_provider)
+    nodes = AgentNodes(llm_provider, search_service)
     
     # Create graph
     workflow = StateGraph(AgentState)
@@ -76,6 +82,7 @@ def create_agent_graph(
     # Add nodes
     workflow.add_node("classify_intent", nodes.classify_intent)
     workflow.add_node("retrieve_context", nodes.retrieve_context)
+    workflow.add_node("web_search", nodes.web_search)
     workflow.add_node("generate_response", nodes.generate_response)
     workflow.add_node("handle_error", nodes.handle_error)
     
@@ -83,18 +90,22 @@ def create_agent_graph(
     workflow.set_entry_point("classify_intent")
     
     # Add edges
-    # After classification, decide whether to retrieve context
+    # After classification, decide whether to retrieve context, search web, or generate response
     workflow.add_conditional_edges(
         "classify_intent",
         should_retrieve_context,
         {
             "retrieve_context": "retrieve_context",
+            "web_search": "web_search",
             "generate_response": "generate_response",
         },
     )
     
     # After retrieving context, generate response
     workflow.add_edge("retrieve_context", "generate_response")
+    
+    # After web search, generate response
+    workflow.add_edge("web_search", "generate_response")
     
     # After generating response, end
     workflow.add_edge("generate_response", END)
@@ -125,22 +136,26 @@ class ByteBuddhiAgent:
         graph: Compiled LangGraph agent
         llm_provider: LLM provider for the agent
         checkpoint_saver: Optional checkpoint saver for persistence
+        search_service: Optional Tavily search service for web searches
     """
 
     def __init__(
         self,
         llm_provider: LLMProvider,
         checkpoint_saver: Optional[BaseCheckpointSaver] = None,
+        search_service = None,
     ):
         """Initialize the agent.
         
         Args:
             llm_provider: LLM provider for the agent
             checkpoint_saver: Optional checkpoint saver for state persistence
+            search_service: Optional Tavily search service for web searches
         """
         self.llm_provider = llm_provider
         self.checkpoint_saver = checkpoint_saver
-        self.graph = create_agent_graph(llm_provider, checkpoint_saver)
+        self.search_service = search_service
+        self.graph = create_agent_graph(llm_provider, checkpoint_saver, search_service)
 
     async def process_query(
         self,
@@ -169,6 +184,7 @@ class ByteBuddhiAgent:
             "intent": None,
             "project_id": project_id,
             "retrieved_context": [],
+            "search_results": None,
             "generated_code": None,
             "explanation": None,
             "error": None,
