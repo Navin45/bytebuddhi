@@ -26,7 +26,6 @@ hiredis
 
 # Auth & Security
 python-jose[cryptography]
-passlib[bcrypt]
 bcrypt
 
 # Pydantic
@@ -72,7 +71,6 @@ isort
 
 # Type Stubs
 types-redis
-types-passlib
 sqlalchemy[mypy]
 
 # Development Tools

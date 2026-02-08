@@ -48,10 +48,9 @@ class UserResponse(TimestampMixin):
     
     id: UUID = Field(..., description="User ID")
     email: EmailStr = Field(..., description="User email")
-    full_name: Optional[str] = Field(default=None, description="User full name")
+    username: str = Field(..., description="Username")
     is_active: bool = Field(..., description="Whether user account is active")
-    quota_used: int = Field(..., description="API quota used this month")
-    quota_limit: int = Field(..., description="Monthly API quota limit")
+    usage_quota: int = Field(..., description="Monthly API usage quota limit")
     
     class Config:
         """Pydantic configuration."""

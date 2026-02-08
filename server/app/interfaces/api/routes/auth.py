@@ -56,11 +56,14 @@ async def register(
     # Hash password
     hashed_password = password_hasher.hash_password(request.password)
     
+    # Generate username from email (before @ symbol)
+    username = request.email.split('@')[0]
+    
     # Create user
     user = User.create(
         email=request.email,
-        hashed_password=hashed_password,
-        full_name=request.full_name,
+        username=username,
+        password_hash=hashed_password,
     )
     
     created_user = await user_repo.create(user)
@@ -100,7 +103,7 @@ async def login(
         )
     
     # Verify password
-    if not password_hasher.verify_password(request.password, user.hashed_password):
+    if not password_hasher.verify_password(request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
