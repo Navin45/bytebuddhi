@@ -5,7 +5,7 @@ using bcrypt. All passwords are hashed before storage and never
 stored in plain text.
 """
 
-from passlib.context import CryptContext
+import bcrypt
 
 from app.infrastructure.config.logger import get_logger
 
@@ -19,16 +19,17 @@ class PasswordHasher:
     them against stored hashes. It uses bcrypt with automatic salt generation.
     
     Attributes:
-        pwd_context: Passlib CryptContext configured for bcrypt
+        rounds: Cost factor for bcrypt (default: 12)
     """
 
-    def __init__(self):
-        """Initialize password hasher with bcrypt configuration."""
-        self.pwd_context = CryptContext(
-            schemes=["bcrypt"],
-            deprecated="auto",
-            bcrypt__rounds=12,  # Cost factor for bcrypt
-        )
+    def __init__(self, rounds: int = 12):
+        """Initialize password hasher with bcrypt configuration.
+        
+        Args:
+            rounds: Cost factor for bcrypt (default: 12). Higher values are more secure
+                   but slower. Each increment doubles the computation time.
+        """
+        self.rounds = rounds
 
     def hash_password(self, password: str) -> str:
         """Hash a plain text password.
@@ -43,7 +44,15 @@ class PasswordHasher:
         Returns:
             str: Hashed password (includes salt)
         """
-        return self.pwd_context.hash(password)
+        # Convert password to bytes
+        password_bytes = password.encode('utf-8')
+        
+        # Generate salt and hash
+        salt = bcrypt.gensalt(rounds=self.rounds)
+        hashed = bcrypt.hashpw(password_bytes, salt)
+        
+        # Return as string
+        return hashed.decode('utf-8')
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against a hash.
@@ -60,7 +69,12 @@ class PasswordHasher:
             bool: True if password matches hash, False otherwise
         """
         try:
-            return self.pwd_context.verify(plain_password, hashed_password)
+            # Convert to bytes
+            password_bytes = plain_password.encode('utf-8')
+            hashed_bytes = hashed_password.encode('utf-8')
+            
+            # Verify using bcrypt
+            return bcrypt.checkpw(password_bytes, hashed_bytes)
         except Exception as e:
             logger.error("Password verification failed", error=str(e))
             return False
@@ -68,7 +82,7 @@ class PasswordHasher:
     def needs_rehash(self, hashed_password: str) -> bool:
         """Check if a password hash needs to be updated.
         
-        Determines if a hash was created with deprecated parameters
+        Determines if a hash was created with different cost factor
         and should be rehashed with current settings.
         
         Args:
@@ -77,7 +91,20 @@ class PasswordHasher:
         Returns:
             bool: True if hash should be updated, False otherwise
         """
-        return self.pwd_context.needs_update(hashed_password)
+        try:
+            # Extract the cost factor from the hash
+            # bcrypt hashes have format: $2b$<cost>$<salt+hash>
+            hashed_bytes = hashed_password.encode('utf-8')
+            parts = hashed_bytes.split(b'$')
+            
+            if len(parts) >= 3:
+                current_rounds = int(parts[2])
+                return current_rounds != self.rounds
+            
+            return False
+        except Exception as e:
+            logger.error("Failed to check if rehash needed", error=str(e))
+            return False
 
 
 # Global password hasher instance
