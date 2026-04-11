@@ -105,3 +105,12 @@ class User:
         """
         self.api_key = new_api_key
         self.updated_at = datetime.utcnow()
+
+    def update_password(self, new_password_hash: str) -> None:
+        """Update the user's password hash.
+        
+        Args:
+            new_password_hash: New bcrypt password hash
+        """
+        self.password_hash = new_password_hash
+        self.updated_at = datetime.utcnow()

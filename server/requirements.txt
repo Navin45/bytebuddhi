@@ -38,6 +38,7 @@ python-dotenv
 structlog
 tenacity
 httpx
+aiofiles
 
 # Code Processing
 tree-sitter

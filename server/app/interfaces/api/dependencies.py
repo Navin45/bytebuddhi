@@ -13,9 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.ports.output.cache.cache_service import CacheService
 from app.application.ports.output.llm.llm_provider import LLMProvider
+from app.application.ports.output.repository.code_chunk_repository import (
+    CodeChunkRepository,
+)
 from app.application.ports.output.repository.conversation_repository import (
     ConversationRepository,
 )
+from app.application.ports.output.repository.embedding_repository import (
+    EmbeddingRepository,
+)
+from app.application.ports.output.repository.file_repository import FileRepository
 from app.application.ports.output.repository.message_repository import (
     MessageRepository,
 )
@@ -26,11 +33,15 @@ from app.application.ports.output.repository.user_repository import UserReposito
 from app.infrastructure.llm.provider_factory import create_llm_provider
 from app.infrastructure.persistence.postgres.database import get_db
 from app.infrastructure.persistence.postgres.repositories import (
+    CodeChunkRepositoryImpl,
     ConversationRepositoryImpl,
+    EmbeddingRepositoryImpl,
+    FileRepositoryImpl,
     MessageRepositoryImpl,
     ProjectRepositoryImpl,
     UserRepositoryImpl,
 )
+from app.infrastructure.storage import LocalFileStorageService
 from app.infrastructure.persistence.redis.cache_service_impl import RedisCacheService
 from app.infrastructure.persistence.redis.client import get_redis_client
 
@@ -114,6 +125,70 @@ async def get_message_repository(
         MessageRepository: Message repository instance
     """
     return MessageRepositoryImpl(db)
+
+
+async def get_file_repository(
+    db: AsyncSession = Depends(get_db),
+) -> FileRepository:
+    """Get file repository instance.
+    
+    This dependency provides a FileRepository implementation
+    for use in route handlers.
+    
+    Args:
+        db: Database session from get_db dependency
+        
+    Returns:
+        FileRepository: File repository instance
+    """
+    return FileRepositoryImpl(db)
+
+
+async def get_code_chunk_repository(
+    db: AsyncSession = Depends(get_db),
+) -> CodeChunkRepository:
+    """Get code chunk repository instance.
+    
+    This dependency provides a CodeChunkRepository implementation
+    for use in route handlers.
+    
+    Args:
+        db: Database session from get_db dependency
+        
+    Returns:
+        CodeChunkRepository: Code chunk repository instance
+    """
+    return CodeChunkRepositoryImpl(db)
+
+
+async def get_embedding_repository(
+    db: AsyncSession = Depends(get_db),
+) -> EmbeddingRepository:
+    """Get embedding repository instance.
+    
+    This dependency provides an EmbeddingRepository implementation
+    for use in route handlers.
+    
+    Args:
+        db: Database session from get_db dependency
+        
+    Returns:
+        EmbeddingRepository: Embedding repository instance
+    """
+    return EmbeddingRepositoryImpl(db)
+
+
+def get_file_storage_service() -> FileStorageService:
+    """Get file storage service instance.
+    
+    This dependency provides a FileStorageService implementation
+    for storing and retrieving file content.
+    
+    Returns:
+        FileStorageService: File storage service instance
+    """
+    # Use local filesystem storage
+    return LocalFileStorageService(base_path="./storage")
 
 
 async def get_cache_service() -> AsyncGenerator[CacheService, None]:

@@ -10,7 +10,7 @@ from app.infrastructure.config.settings import settings
 from app.infrastructure.persistence.postgres.database import close_db, init_db
 from app.interfaces.api.middleware.error_handler import error_handler_middleware
 from app.interfaces.api.middleware.rate_limiter import RateLimitMiddleware
-from app.interfaces.api.routes import agent, auth, chat, health, projects
+from app.interfaces.api.routes import agent, auth, chat, files, health, projects
 
 # Setup logging
 setup_logging()
@@ -87,6 +87,7 @@ app.middleware("http")(error_handler_middleware)
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
+app.include_router(files.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
 
