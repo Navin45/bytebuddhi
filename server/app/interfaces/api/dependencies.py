@@ -247,13 +247,78 @@ def get_model_gateway() -> ModelGateway:
     return create_model_gateway()
 
 
-def get_tool_registry() -> Any:
-    """Get ToolRegistry with default Phase 1 tools registered."""
+def get_workspace() -> Any:
+    """Get active Workspace instance."""
+    from app.domain.models.workspace import Workspace
+
+    return Workspace.create(root_path=".", workspace_id="default_workspace")
+
+
+def get_artifact_store() -> Any:
+    """Get ArtifactStore for archiving large process outputs."""
+    from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
+
+    return LocalArtifactStore(base_dir="./storage/artifacts")
+
+
+def get_process_manager() -> Any:
+    """Get LocalProcessManager for OS command execution."""
+    from app.infrastructure.execution.local_process_manager import LocalProcessManager
+
+    return LocalProcessManager()
+
+
+def get_command_policy() -> Any:
+    """Get CommandPolicy instance."""
+    from app.application.policy.command_policy import CommandPolicy
+
+    return CommandPolicy()
+
+
+def get_tool_policy_engine() -> Any:
+    """Get ToolPolicyEngine instance."""
+    from app.application.policy.tool_policy import ToolPolicyEngine
+
+    return ToolPolicyEngine(command_policy=get_command_policy())
+
+
+def get_command_executor(
+    workspace: Any = Depends(get_workspace),
+    process_manager: Any = Depends(get_process_manager),
+    artifact_store: Any = Depends(get_artifact_store),
+    command_policy: Any = Depends(get_command_policy),
+) -> Any:
+    """Get CommandExecutor instance."""
+    from app.application.execution.command_executor import CommandExecutor
+
+    return CommandExecutor(
+        process_manager=process_manager,
+        workspace=workspace,
+        command_policy=command_policy,
+        artifact_store=artifact_store,
+    )
+
+
+def get_tool_registry(
+    command_executor: Any = Depends(get_command_executor),
+) -> Any:
+    """Get ToolRegistry with Phase 1 and Phase 2 tools registered."""
+    from app.application.tools.builtin.command_tools import create_command_tool
     from app.application.tools.builtin.echo_tool import register_echo_tool
+    from app.application.tools.builtin.filesystem_tools import create_filesystem_tools
     from app.application.tools.registry import ToolRegistry
 
     registry = ToolRegistry()
     register_echo_tool(registry)
+
+    # Register filesystem tools
+    for defn, handler in create_filesystem_tools():
+        registry.register(defn, handler)
+
+    # Register command tool
+    cmd_def, cmd_handler = create_command_tool(command_executor)
+    registry.register(cmd_def, cmd_handler)
+
     return registry
 
 
@@ -267,16 +332,30 @@ def get_context_engine() -> Any:
 async def get_agent_runtime(
     db: AsyncSession = Depends(get_db),
     model_gateway: ModelGateway = Depends(get_model_gateway),
+    workspace: Any = Depends(get_workspace),
+    command_executor: Any = Depends(get_command_executor),
+    tool_policy_engine: Any = Depends(get_tool_policy_engine),
 ) -> Any:
-    """Get AgentRuntime configured with ModelGateway, ToolRegistry, and Postgres checkpoint saver."""
+    """Get AgentRuntime configured with Phase 1 & 2 capabilities and Postgres checkpoint saver."""
     from app.application.agent.context import ContextEngine
     from app.application.agent.runtime import AgentRuntime
+    from app.application.tools.builtin.command_tools import create_command_tool
     from app.application.tools.builtin.echo_tool import register_echo_tool
+    from app.application.tools.builtin.filesystem_tools import create_filesystem_tools
+    from app.application.tools.executor import ToolExecutor
     from app.application.tools.registry import ToolRegistry
     from app.infrastructure.persistence.postgres.checkpoint_saver import PostgresCheckpointSaver
 
     registry = ToolRegistry()
     register_echo_tool(registry)
+
+    for defn, handler in create_filesystem_tools():
+        registry.register(defn, handler)
+
+    cmd_def, cmd_handler = create_command_tool(command_executor)
+    registry.register(cmd_def, cmd_handler)
+
+    tool_executor = ToolExecutor(registry, policy_engine=tool_policy_engine)
     context_engine = ContextEngine()
     checkpointer = PostgresCheckpointSaver(db)
 
@@ -284,5 +363,7 @@ async def get_agent_runtime(
         model_gateway=model_gateway,
         tool_registry=registry,
         context_engine=context_engine,
+        tool_executor=tool_executor,
         checkpointer=checkpointer,
+        workspace=workspace,
     )

@@ -20,9 +20,11 @@ from app.application.agent.errors import (
 from app.application.agent.state import AgentLoopState, AgentRunState
 from app.application.agent.types import AgentStatus
 from app.application.ports.output.llm.model_gateway import ModelGateway
+from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import ToolCall
 from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
+from app.domain.models.workspace import Workspace
 from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +37,7 @@ def create_agent_loop_graph(
     context_engine: ContextEngine,
     system_prompt: str,
     checkpointer: BaseCheckpointSaver | None = None,
+    workspace: Workspace | None = None,
 ) -> CompiledStateGraph:
     """Build and compile the inner agent loop StateGraph using LangGraph."""
 
@@ -137,8 +140,19 @@ def create_agent_loop_graph(
             for tc in pending_calls
         ]
 
-        # Execute tools safely
-        results = await tool_executor.execute_all(tool_calls)
+        ws = workspace or Workspace.create(root_path=".")
+        run_id = state.get("run_id", "")
+
+        # Execute tools safely with ToolExecutionContext
+        results = []
+        for call in tool_calls:
+            ctx = ToolExecutionContext(
+                run_id=run_id,
+                tool_call_id=call.id,
+                workspace=ws,
+            )
+            res = await tool_executor.execute(call, context=ctx)
+            results.append(res)
 
         new_tool_messages = [
             ContextEngine.format_tool_result_message(
@@ -206,6 +220,7 @@ class AgentRuntime:
             "Use available tools when needed to verify information and complete tasks."
         ),
         max_iterations: int = 10,
+        workspace: Workspace | None = None,
     ):
         self.model_gateway = model_gateway
         self.tool_registry = tool_registry
@@ -214,6 +229,7 @@ class AgentRuntime:
         self.checkpointer = checkpointer
         self.default_system_prompt = default_system_prompt
         self.max_iterations = max_iterations
+        self.workspace = workspace or Workspace.create(root_path=".")
 
         self.graph = create_agent_loop_graph(
             model_gateway=self.model_gateway,
@@ -222,6 +238,7 @@ class AgentRuntime:
             context_engine=self.context_engine,
             system_prompt=self.default_system_prompt,
             checkpointer=self.checkpointer,
+            workspace=self.workspace,
         )
 
     async def run(
@@ -231,6 +248,7 @@ class AgentRuntime:
         run_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         config: RunnableConfig | None = None,
+        workspace: Workspace | None = None,
     ) -> AgentRunState:
         """Execute the agent loop for the given messages.
 
@@ -240,6 +258,7 @@ class AgentRuntime:
             run_id: Optional unique run identifier.
             metadata: Optional metadata dictionary.
             config: Optional LangGraph RunnableConfig (e.g. thread_id for checkpointer).
+            workspace: Optional Workspace override for this run.
 
         Returns:
             AgentRunState: Final run state including answer, status, and history.
@@ -259,16 +278,19 @@ class AgentRuntime:
             "metadata": metadata or {},
         }
 
-        # If system prompt is customized, we compile with it or use the default graph
+        # If system prompt or workspace is customized, we compile with it
         graph_to_use = self.graph
-        if system_prompt and system_prompt != self.default_system_prompt:
+        custom_prompt = system_prompt and system_prompt != self.default_system_prompt
+        custom_ws = workspace and workspace != self.workspace
+        if custom_prompt or custom_ws:
             graph_to_use = create_agent_loop_graph(
                 model_gateway=self.model_gateway,
                 tool_registry=self.tool_registry,
                 tool_executor=self.tool_executor,
                 context_engine=self.context_engine,
-                system_prompt=system_prompt,
+                system_prompt=system_prompt or self.default_system_prompt,
                 checkpointer=self.checkpointer,
+                workspace=workspace or self.workspace,
             )
 
         run_config = config or {"configurable": {"thread_id": active_run_id}}
