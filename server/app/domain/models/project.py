@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 
@@ -11,14 +10,14 @@ class Project:
         id: UUID,
         user_id: UUID,
         name: str,
-        description: Optional[str],
-        repository_url: Optional[str],
-        local_path: Optional[str],
-        language: Optional[str],
-        framework: Optional[str],
+        description: str | None,
+        repository_url: str | None,
+        local_path: str | None,
+        language: str | None,
+        framework: str | None,
         created_at: datetime,
         updated_at: datetime,
-        last_indexed_at: Optional[datetime],
+        last_indexed_at: datetime | None,
         is_active: bool = True,
     ):
         self.id = id
@@ -38,11 +37,11 @@ class Project:
     def create(
         user_id: UUID,
         name: str,
-        description: Optional[str] = None,
-        repository_url: Optional[str] = None,
-        local_path: Optional[str] = None,
-        language: Optional[str] = None,
-        framework: Optional[str] = None,
+        description: str | None = None,
+        repository_url: str | None = None,
+        local_path: str | None = None,
+        language: str | None = None,
+        framework: str | None = None,
     ) -> "Project":
         """Factory method to create a new project."""
         now = datetime.utcnow()
@@ -68,10 +67,10 @@ class Project:
 
     def update_info(
         self,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        language: Optional[str] = None,
-        framework: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        language: str | None = None,
+        framework: str | None = None,
     ) -> None:
         """Update project information."""
         if name:

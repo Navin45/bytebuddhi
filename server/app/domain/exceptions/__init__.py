@@ -13,11 +13,11 @@ from app.domain.exceptions.project_exceptions import (
 )
 
 __all__ = [
+    "ConversationNotFoundException",
     "DomainException",
-    "ProjectNotFoundException",
+    "InvalidMessageRoleException",
+    "MessageNotFoundException",
     "ProjectAlreadyExistsException",
     "ProjectIndexingException",
-    "ConversationNotFoundException",
-    "MessageNotFoundException",
-    "InvalidMessageRoleException",
+    "ProjectNotFoundException",
 ]

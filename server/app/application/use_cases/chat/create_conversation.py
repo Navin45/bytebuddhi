@@ -1,6 +1,3 @@
-from typing import Optional
-from uuid import UUID
-
 from app.application.dto.chat_dto import ConversationResponseDTO, CreateConversationDTO
 from app.application.ports.output.repository.conversation_repository import (
     ConversationRepository,

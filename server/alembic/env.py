@@ -16,15 +16,6 @@ from alembic import context
 # Import your models' metadata
 from app.infrastructure.config.settings import settings
 from app.infrastructure.persistence.postgres.database import Base
-from app.infrastructure.persistence.postgres.models import (
-    CodeChunkModel,
-    ConversationModel,
-    EmbeddingModel,
-    FileModel,
-    MessageModel,
-    ProjectModel,
-    UserModel,
-)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -75,7 +66,7 @@ def run_migrations_offline() -> None:
 
 def do_run_migrations(connection: Connection) -> None:
     """Run migrations with the given connection.
-    
+
     Args:
         connection: SQLAlchemy connection
     """
@@ -92,7 +83,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     """Run migrations in 'online' mode with async engine.
-    
+
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
@@ -103,7 +94,7 @@ async def run_async_migrations() -> None:
             "application_name": "bytebuddhi_alembic",
         },
     }
-    
+
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",

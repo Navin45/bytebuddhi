@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 
@@ -13,9 +12,9 @@ class Message:
         role: str,
         content: str,
         created_at: datetime,
-        metadata: Optional[dict] = None,
-        parent_message_id: Optional[UUID] = None,
-        feedback: Optional[int] = None,
+        metadata: dict | None = None,
+        parent_message_id: UUID | None = None,
+        feedback: int | None = None,
     ):
         self.id = id
         self.conversation_id = conversation_id
@@ -35,8 +34,8 @@ class Message:
         conversation_id: UUID,
         role: str,
         content: str,
-        parent_message_id: Optional[UUID] = None,
-        metadata: Optional[dict] = None,
+        parent_message_id: UUID | None = None,
+        metadata: dict | None = None,
     ) -> "Message":
         """Factory method to create a new message."""
         return Message(

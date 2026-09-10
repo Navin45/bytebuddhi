@@ -12,7 +12,7 @@ from app.domain.services.project_indexing_service import ProjectIndexingService
 from app.domain.services.quota_management_service import QuotaManagementService
 
 __all__ = [
+    "ConversationContextService",
     "ProjectIndexingService",
     "QuotaManagementService",
-    "ConversationContextService",
 ]

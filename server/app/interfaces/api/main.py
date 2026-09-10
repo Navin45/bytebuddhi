@@ -20,13 +20,13 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager.
-    
+
     Handles startup and shutdown tasks including database
     and Redis connection initialization and cleanup.
     """
     # Startup
     logger.info("Starting ByteBuddhi API", env=settings.app_env)
-    
+
     # Initialize database
     try:
         await init_db()
@@ -34,25 +34,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Failed to initialize database", error=str(e))
         raise
-    
+
     # Initialize Redis
     try:
         from app.infrastructure.persistence.redis.client import get_redis_client
+
         await get_redis_client()
         logger.info("Redis initialized successfully")
     except Exception as e:
         logger.error("Failed to initialize Redis", error=str(e))
         # Redis is optional for basic functionality
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down ByteBuddhi API")
     await close_db()
-    
+
     # Close Redis connections
     try:
         from app.infrastructure.persistence.redis.client import close_redis_client
+
         await close_redis_client()
     except Exception as e:
         logger.error("Error closing Redis", error=str(e))
@@ -105,7 +107,7 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "app.interfaces.api.main:app",
         host=settings.host,

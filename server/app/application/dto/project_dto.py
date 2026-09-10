@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -10,20 +9,20 @@ class CreateProjectDTO(BaseModel):
 
     user_id: UUID
     name: str
-    description: Optional[str] = None
-    repository_url: Optional[str] = None
-    local_path: Optional[str] = None
-    language: Optional[str] = None
-    framework: Optional[str] = None
+    description: str | None = None
+    repository_url: str | None = None
+    local_path: str | None = None
+    language: str | None = None
+    framework: str | None = None
 
 
 class UpdateProjectDTO(BaseModel):
     """DTO for updating a project."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    language: Optional[str] = None
-    framework: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    language: str | None = None
+    framework: str | None = None
 
 
 class ProjectResponseDTO(BaseModel):
@@ -32,14 +31,14 @@ class ProjectResponseDTO(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    description: Optional[str]
-    repository_url: Optional[str]
-    local_path: Optional[str]
-    language: Optional[str]
-    framework: Optional[str]
+    description: str | None
+    repository_url: str | None
+    local_path: str | None
+    language: str | None
+    framework: str | None
     created_at: datetime
     updated_at: datetime
-    last_indexed_at: Optional[datetime]
+    last_indexed_at: datetime | None
     is_active: bool
 
     class Config:

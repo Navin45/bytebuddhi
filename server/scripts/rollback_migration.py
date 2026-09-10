@@ -11,16 +11,16 @@ import sys
 
 def main():
     """Rollback the last migration."""
-    print("="*60)
+    print("=" * 60)
     print("Rolling Back Last Migration")
-    print("="*60)
-    
+    print("=" * 60)
+
     # Ask for confirmation
     response = input("\nThis will revert the last migration. Continue? (y/N): ")
-    if response.lower() != 'y':
+    if response.lower() != "y":
         print("Rollback cancelled.")
         sys.exit(0)
-    
+
     try:
         # Run alembic downgrade -1
         result = subprocess.run(
@@ -29,14 +29,14 @@ def main():
             capture_output=True,
             text=True,
         )
-        
+
         print(result.stdout)
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("Rollback completed successfully!")
-        print("="*60)
+        print("=" * 60)
         sys.exit(0)
-        
+
     except subprocess.CalledProcessError as e:
         print("\n Rollback failed!")
         print(f"Error: {e.stderr}")

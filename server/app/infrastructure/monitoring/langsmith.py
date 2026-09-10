@@ -5,7 +5,6 @@ enabling debugging, performance monitoring, and conversation analysis.
 """
 
 import os
-from typing import Optional
 
 from langsmith import Client
 
@@ -17,10 +16,10 @@ logger = get_logger(__name__)
 
 class LangSmithConfig:
     """LangSmith configuration and client management.
-    
+
     This class handles LangSmith setup, including environment variable
     configuration and client initialization for agent tracing.
-    
+
     Attributes:
         enabled: Whether LangSmith tracing is enabled
         client: LangSmith client instance
@@ -30,14 +29,14 @@ class LangSmithConfig:
     def __init__(self):
         """Initialize LangSmith configuration."""
         self.enabled = False
-        self.client: Optional[Client] = None
+        self.client: Client | None = None
         self.project_name = settings.langchain_project
-        
+
         self._configure()
 
     def _configure(self) -> None:
         """Configure LangSmith environment variables and client.
-        
+
         Sets up LangSmith tracing by configuring environment variables
         and initializing the client if an API key is provided.
         """
@@ -72,15 +71,15 @@ class LangSmithConfig:
 
     def is_enabled(self) -> bool:
         """Check if LangSmith tracing is enabled.
-        
+
         Returns:
             bool: True if tracing is enabled and configured
         """
         return self.enabled
 
-    def get_client(self) -> Optional[Client]:
+    def get_client(self) -> Client | None:
         """Get LangSmith client instance.
-        
+
         Returns:
             Optional[Client]: LangSmith client or None if not configured
         """
@@ -88,29 +87,29 @@ class LangSmithConfig:
 
     def create_run_url(self, run_id: str) -> str:
         """Create URL to view a specific run in LangSmith.
-        
+
         Args:
             run_id: LangSmith run identifier
-            
+
         Returns:
             str: URL to view the run in LangSmith UI
         """
         if not self.enabled:
             return ""
-        
+
         return f"{settings.langchain_endpoint}/o/default/projects/p/{self.project_name}/r/{run_id}"
 
     def log_feedback(
         self,
         run_id: str,
         score: float,
-        comment: Optional[str] = None,
+        comment: str | None = None,
     ) -> None:
         """Log user feedback for a run.
-        
+
         Records user feedback (thumbs up/down, ratings) for an agent
         run, enabling quality tracking and model improvement.
-        
+
         Args:
             run_id: LangSmith run identifier
             score: Feedback score (0.0 to 1.0, or -1.0 to 1.0)
@@ -137,9 +136,9 @@ class LangSmithConfig:
 langsmith_config = LangSmithConfig()
 
 
-def get_langsmith_client() -> Optional[Client]:
+def get_langsmith_client() -> Client | None:
     """Get the global LangSmith client.
-    
+
     Returns:
         Optional[Client]: LangSmith client or None if not configured
     """
@@ -148,18 +147,18 @@ def get_langsmith_client() -> Optional[Client]:
 
 def is_langsmith_enabled() -> bool:
     """Check if LangSmith tracing is enabled.
-    
+
     Returns:
         bool: True if LangSmith is configured and enabled
     """
     return langsmith_config.is_enabled()
 
 
-def log_agent_feedback(run_id: str, score: float, comment: Optional[str] = None) -> None:
+def log_agent_feedback(run_id: str, score: float, comment: str | None = None) -> None:
     """Log feedback for an agent run.
-    
+
     Convenience function to log user feedback for agent execution.
-    
+
     Args:
         run_id: LangSmith run identifier
         score: Feedback score (0.0 to 1.0)
@@ -170,10 +169,10 @@ def log_agent_feedback(run_id: str, score: float, comment: Optional[str] = None)
 
 def get_run_url(run_id: str) -> str:
     """Get URL to view a run in LangSmith.
-    
+
     Args:
         run_id: LangSmith run identifier
-        
+
     Returns:
         str: URL to LangSmith run viewer
     """

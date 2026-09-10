@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 
@@ -10,12 +9,12 @@ class Conversation:
         self,
         id: UUID,
         user_id: UUID,
-        project_id: Optional[UUID],
-        title: Optional[str],
+        project_id: UUID | None,
+        title: str | None,
         created_at: datetime,
         updated_at: datetime,
         is_archived: bool = False,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ):
         self.id = id
         self.user_id = user_id
@@ -29,8 +28,8 @@ class Conversation:
     @staticmethod
     def create(
         user_id: UUID,
-        project_id: Optional[UUID] = None,
-        title: Optional[str] = None,
+        project_id: UUID | None = None,
+        title: str | None = None,
     ) -> "Conversation":
         """Factory method to create a new conversation."""
         now = datetime.utcnow()

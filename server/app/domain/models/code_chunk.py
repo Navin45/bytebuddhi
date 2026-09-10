@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 
@@ -17,7 +16,7 @@ class CodeChunk:
         end_line: int,
         created_at: datetime,
         updated_at: datetime,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ):
         self.id = id
         self.file_id = file_id
@@ -38,7 +37,7 @@ class CodeChunk:
         chunk_index: int,
         start_line: int,
         end_line: int,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> "CodeChunk":
         """Factory method to create a new code chunk."""
         now = datetime.utcnow()

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
 from uuid import UUID
 
 from app.domain.models.message import Message
@@ -14,14 +13,12 @@ class MessageRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_by_id(self, message_id: UUID) -> Optional[Message]:
+    async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID."""
         pass
 
     @abstractmethod
-    async def get_by_conversation_id(
-        self, conversation_id: UUID, limit: Optional[int] = None
-    ) -> List[Message]:
+    async def get_by_conversation_id(self, conversation_id: UUID, limit: int | None = None) -> list[Message]:
         """Get all messages for a conversation."""
         pass
 

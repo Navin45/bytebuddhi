@@ -39,7 +39,9 @@ class UserModel(Base):
 
     # Relationships
     projects = relationship("ProjectModel", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
-    conversations = relationship("ConversationModel", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
+    conversations = relationship(
+        "ConversationModel", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class ProjectModel(Base):
@@ -118,7 +120,9 @@ class CodeChunkModel(Base):
 
     # Relationships
     file = relationship("FileModel", back_populates="code_chunks", lazy="selectin")
-    embedding = relationship("EmbeddingModel", back_populates="code_chunk", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+    embedding = relationship(
+        "EmbeddingModel", back_populates="code_chunk", uselist=False, cascade="all, delete-orphan", lazy="selectin"
+    )
 
     # Constraints
     __table_args__ = (
@@ -133,7 +137,9 @@ class EmbeddingModel(Base):
     __tablename__ = "code_embeddings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    code_chunk_id = Column(UUID(as_uuid=True), ForeignKey("code_chunks.id", ondelete="CASCADE"), nullable=False, unique=True)
+    code_chunk_id = Column(
+        UUID(as_uuid=True), ForeignKey("code_chunks.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     embedding = Column(Vector(1536), nullable=False)  # OpenAI embedding dimension
     model_name = Column(String(100), nullable=False)
@@ -174,7 +180,9 @@ class ConversationModel(Base):
     # Relationships
     user = relationship("UserModel", back_populates="conversations", lazy="selectin")
     project = relationship("ProjectModel", back_populates="conversations", lazy="selectin")
-    messages = relationship("MessageModel", back_populates="conversation", cascade="all, delete-orphan", lazy="selectin")
+    messages = relationship(
+        "MessageModel", back_populates="conversation", cascade="all, delete-orphan", lazy="selectin"
+    )
 
     # Constraints
     __table_args__ = (
@@ -202,6 +210,4 @@ class MessageModel(Base):
     parent_message = relationship("MessageModel", remote_side=[id], backref="child_messages", lazy="selectin")
 
     # Constraints
-    __table_args__ = (
-        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_messages_conversation_created", "conversation_id", "created_at"),)

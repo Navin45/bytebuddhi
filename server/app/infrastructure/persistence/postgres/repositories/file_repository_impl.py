@@ -1,6 +1,5 @@
 """File repository implementation."""
 
-from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -35,53 +34,38 @@ class FileRepositoryImpl(FileRepository):
         await self.session.flush()
         return self._to_domain(file_model)
 
-    async def get_by_id(self, file_id: UUID) -> Optional[File]:
+    async def get_by_id(self, file_id: UUID) -> File | None:
         """Get file by ID."""
-        result = await self.session.execute(
-            select(FileModel).where(FileModel.id == file_id)
-        )
+        result = await self.session.execute(select(FileModel).where(FileModel.id == file_id))
         file_model = result.scalar_one_or_none()
         return self._to_domain(file_model) if file_model else None
 
-    async def get_by_project_id(
-        self, 
-        project_id: UUID,
-        include_deleted: bool = False
-    ) -> List[File]:
+    async def get_by_project_id(self, project_id: UUID, include_deleted: bool = False) -> list[File]:
         """Get all files for a project."""
         query = select(FileModel).where(FileModel.project_id == project_id)
-        
+
         if not include_deleted:
             query = query.where(FileModel.is_deleted == False)
-        
+
         query = query.order_by(FileModel.created_at.desc())
-        
+
         result = await self.session.execute(query)
         file_models = result.scalars().all()
         return [self._to_domain(model) for model in file_models]
 
-    async def get_by_path(
-        self, 
-        project_id: UUID, 
-        file_path: str
-    ) -> Optional[File]:
+    async def get_by_path(self, project_id: UUID, file_path: str) -> File | None:
         """Get file by project ID and file path."""
         result = await self.session.execute(
-            select(FileModel).where(
-                FileModel.project_id == project_id,
-                FileModel.file_path == file_path
-            )
+            select(FileModel).where(FileModel.project_id == project_id, FileModel.file_path == file_path)
         )
         file_model = result.scalar_one_or_none()
         return self._to_domain(file_model) if file_model else None
 
     async def update(self, file: File) -> File:
         """Update an existing file."""
-        result = await self.session.execute(
-            select(FileModel).where(FileModel.id == file.id)
-        )
+        result = await self.session.execute(select(FileModel).where(FileModel.id == file.id))
         file_model = result.scalar_one()
-        
+
         file_model.file_path = file.file_path
         file_model.file_name = file.file_name
         file_model.file_type = file.file_type
@@ -89,34 +73,26 @@ class FileRepositoryImpl(FileRepository):
         file_model.content_hash = file.content_hash
         file_model.last_modified = file.last_modified
         file_model.is_deleted = file.is_deleted
-        
+
         await self.session.flush()
         return self._to_domain(file_model)
 
     async def delete(self, file_id: UUID) -> bool:
         """Soft delete a file."""
-        result = await self.session.execute(
-            select(FileModel).where(FileModel.id == file_id)
-        )
+        result = await self.session.execute(select(FileModel).where(FileModel.id == file_id))
         file_model = result.scalar_one_or_none()
-        
+
         if file_model:
             file_model.is_deleted = True
             await self.session.flush()
             return True
         return False
 
-    async def exists_by_path(
-        self, 
-        project_id: UUID, 
-        file_path: str
-    ) -> bool:
+    async def exists_by_path(self, project_id: UUID, file_path: str) -> bool:
         """Check if file exists at given path in project."""
         result = await self.session.execute(
             select(FileModel.id).where(
-                FileModel.project_id == project_id,
-                FileModel.file_path == file_path,
-                FileModel.is_deleted == False
+                FileModel.project_id == project_id, FileModel.file_path == file_path, FileModel.is_deleted == False
             )
         )
         return result.scalar_one_or_none() is not None

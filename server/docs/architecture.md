@@ -90,7 +90,8 @@ class Email:
         if "@" not in value:
             raise ValueError("Invalid email")
         self.value = value
-    
+
+
 # Two emails with same value are equal
 email1 = Email("user@example.com")
 email2 = Email("user@example.com")
@@ -117,9 +118,10 @@ user2 = User(id=2, email="user@example.com")
 class UserRepository:
     def find_by_email(self, email: str) -> User:
         pass
-    
+
     def save(self, user: User) -> User:
         pass
+
 
 # Implementation (how it's done - hidden from business logic)
 class PostgresUserRepository(UserRepository):
@@ -171,18 +173,14 @@ class CreateProjectUseCase:
 @router.post("/projects")
 async def create_project(
     request: CreateProjectRequest,  # DTO from API
-    user: User = Depends(get_current_user)  # Authentication
+    user: User = Depends(get_current_user),  # Authentication
 ):
     # 1. Convert API DTO to application DTO
-    dto = CreateProjectDTO(
-        user_id=user.id,
-        name=request.name,
-        description=request.description
-    )
-    
+    dto = CreateProjectDTO(user_id=user.id, name=request.name, description=request.description)
+
     # 2. Call use case
     project = await create_project_use_case.execute(dto)
-    
+
     # 3. Convert domain model to API response
     return ProjectResponseDTO.from_domain(project)
 ```
@@ -230,21 +228,17 @@ class LLMProvider(ABC):
     async def generate(self, messages: List[Dict]) -> str:
         pass
 
+
 # Adapter (implementation) - how it's done
 class OpenAIProvider(LLMProvider):
     async def generate(self, messages: List[Dict]) -> str:
-        response = await openai.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-        )
+        response = await openai.chat.completions.create(model="gpt-4", messages=messages)
         return response.choices[0].message.content
+
 
 class AnthropicProvider(LLMProvider):
     async def generate(self, messages: List[Dict]) -> str:
-        response = await anthropic.messages.create(
-            model="claude-3-5-sonnet",
-            messages=messages
-        )
+        response = await anthropic.messages.create(model="claude-3-5-sonnet", messages=messages)
         return response.content[0].text
 ```
 
@@ -421,27 +415,28 @@ class Project:
 ```python
 class Email:
     """Email value object - immutable and validated."""
-    
+
     def __init__(self, value: str):
         # Validation logic
         if not self._is_valid(value):
             raise InvalidEmailError(f"Invalid email: {value}")
         self._value = value
-    
+
     @property
     def value(self) -> str:
         return self._value
-    
+
     def _is_valid(self, email: str) -> bool:
         """Business rule: email format validation"""
         import re
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         return re.match(pattern, email) is not None
-    
+
     def domain(self) -> str:
         """Extract domain from email"""
-        return self._value.split('@')[1]
-    
+        return self._value.split("@")[1]
+
     def __eq__(self, other):
         """Two emails are equal if values match"""
         return isinstance(other, Email) and self._value == other._value
@@ -469,11 +464,11 @@ email = Email("invalid-email")  # ❌ InvalidEmailError
 ```python
 class ProjectIndexingService:
     """Service for indexing project files into vector store."""
-    
+
     def index_project(self, project: Project, files: List[File]):
         """
         Business logic for indexing a project.
-        
+
         This involves:
         1. Parsing files into chunks
         2. Generating embeddings
@@ -482,27 +477,27 @@ class ProjectIndexingService:
         # Business rule: only index active projects
         if not project.is_active:
             raise ProjectInactiveError()
-        
+
         all_chunks = []
-        
+
         for file in files:
             # Business rule: only index supported languages
             if not self._is_supported_language(file.language):
                 continue
-            
+
             # Parse file into chunks
             chunks = self._parse_file(file)
             all_chunks.extend(chunks)
-        
+
         # Mark project as indexed
         project.mark_as_indexed()
-        
+
         return all_chunks
-    
+
     def _is_supported_language(self, language: str) -> bool:
         """Business rule: supported programming languages"""
-        return language in ['python', 'javascript', 'typescript', 'java']
-    
+        return language in ["python", "javascript", "typescript", "java"]
+
     def _parse_file(self, file: File) -> List[CodeChunk]:
         """Parse file into semantic chunks"""
         # Parsing logic here
@@ -520,20 +515,27 @@ class ProjectIndexingService:
 ```python
 class ProjectException(Exception):
     """Base exception for project domain."""
+
     pass
+
 
 class ProjectNotFoundError(ProjectException):
     """Raised when project doesn't exist."""
+
     def __init__(self, project_id: str):
         super().__init__(f"Project not found: {project_id}")
 
+
 class ProjectInactiveError(ProjectException):
     """Raised when trying to use inactive project."""
+
     def __init__(self, project_id: str):
         super().__init__(f"Project is inactive: {project_id}")
 
+
 class QuotaExceededError(ProjectException):
     """Raised when user exceeds usage quota."""
+
     def __init__(self):
         super().__init__("Usage quota exceeded")
 ```
@@ -585,9 +587,11 @@ application/
 ```python
 from pydantic import BaseModel
 
+
 # DTO for creating a project (from API to application)
 class CreateProjectDTO(BaseModel):
     """Data needed to create a project."""
+
     user_id: UUID
     name: str
     description: Optional[str] = None
@@ -595,23 +599,27 @@ class CreateProjectDTO(BaseModel):
     language: Optional[str] = None
     framework: Optional[str] = None
 
+
 # DTO for updating a project
 class UpdateProjectDTO(BaseModel):
     """Data for updating a project."""
+
     name: Optional[str] = None
     description: Optional[str] = None
     language: Optional[str] = None
 
+
 # DTO for project response (from application to API)
 class ProjectResponseDTO(BaseModel):
     """Project data to send to client."""
+
     id: UUID
     name: str
     description: Optional[str]
     language: Optional[str]
     created_at: datetime
     file_count: int
-    
+
     class Config:
         from_attributes = True  # Can create from domain model
 ```
@@ -629,10 +637,7 @@ class ProjectResponseDTO(BaseModel):
 request_data = {"name": "My Project", "language": "python"}
 
 # Convert to DTO (validation happens here)
-dto = CreateProjectDTO(
-    user_id=current_user.id,
-    **request_data
-)
+dto = CreateProjectDTO(user_id=current_user.id, **request_data)
 
 # Use case processes DTO
 project = create_project_use_case.execute(dto)
@@ -653,19 +658,20 @@ return response
 ```python
 from abc import ABC, abstractmethod
 
+
 class LLMProvider(ABC):
     """Port (interface) for LLM providers."""
-    
+
     @abstractmethod
     async def generate(self, messages: List[Dict[str, str]]) -> str:
         """Generate text from messages."""
         pass
-    
+
     @abstractmethod
     async def stream(self, messages: List[Dict[str, str]]) -> AsyncIterator[str]:
         """Stream generated text."""
         pass
-    
+
     @abstractmethod
     async def get_embedding(self, text: str) -> List[float]:
         """Get embedding vector for text."""
@@ -756,35 +762,36 @@ API Request → DTO → Use Case → Domain Logic → Repository → Database
 from typing import TypedDict, List, Optional, Dict, Any
 from langchain_core.messages import BaseMessage
 
+
 class AgentState(TypedDict):
     """
     State that flows through the agent graph.
-    
+
     Think of this as a clipboard that gets passed between
     different processing steps, with each step adding information.
     """
-    
+
     # Conversation
-    messages: List[BaseMessage]          # Chat history
-    user_query: str                      # Current question
-    
+    messages: List[BaseMessage]  # Chat history
+    user_query: str  # Current question
+
     # Classification
-    intent: Optional[str]                # What user wants (code gen, debug, etc.)
-    
+    intent: Optional[str]  # What user wants (code gen, debug, etc.)
+
     # Context
-    project_id: Optional[str]            # Which project
-    retrieved_context: List[Dict]        # Relevant code from vector store
-    search_results: Optional[Dict]       # Web search results
-    
+    project_id: Optional[str]  # Which project
+    retrieved_context: List[Dict]  # Relevant code from vector store
+    search_results: Optional[Dict]  # Web search results
+
     # Generated outputs
-    generated_code: Optional[str]        # Generated code
-    explanation: Optional[str]           # AI response
-    
+    generated_code: Optional[str]  # Generated code
+    explanation: Optional[str]  # AI response
+
     # Error handling
-    error: Optional[str]                 # Error message if any
-    
+    error: Optional[str]  # Error message if any
+
     # Metadata
-    metadata: Dict[str, Any]             # Additional info
+    metadata: Dict[str, Any]  # Additional info
 ```
 
 **Real-Life Analogy**: Like a form that gets filled out as it moves through different departments. Each department adds their information.
@@ -800,20 +807,20 @@ class AgentState(TypedDict):
 ```python
 class AgentNodes:
     """Collection of agent processing nodes."""
-    
+
     def __init__(self, llm_provider: LLMProvider, search_service: TavilySearchService):
         self.llm = llm_provider
         self.search = search_service
-    
+
     async def classify_intent(self, state: AgentState) -> Dict:
         """
         Node 1: Classify what the user wants.
-        
+
         Input: user_query
         Output: intent
         """
         user_query = state["user_query"]
-        
+
         # Ask LLM to classify
         prompt = f"""Classify this request:
         - code_generation: Generate new code
@@ -821,37 +828,33 @@ class AgentNodes:
         - code_debug: Fix bugs
         - web_search: Current information needed
         - general_chat: Casual conversation
-        
+
         Request: {user_query}
-        
+
         Respond with only the category."""
-        
+
         intent = await self.llm.generate([{"role": "user", "content": prompt}])
-        
+
         return {"intent": intent.strip().lower()}
-    
+
     async def web_search(self, state: AgentState) -> Dict:
         """
         Node 2: Search the web for current information.
-        
+
         Input: user_query
         Output: search_results
         """
         query = state["user_query"]
-        
+
         # Use Tavily to search
-        results = await self.search.search(
-            query=query,
-            max_results=5,
-            include_answer=True
-        )
-        
+        results = await self.search.search(query=query, max_results=5, include_answer=True)
+
         return {"search_results": results}
-    
+
     async def retrieve_context(self, state: AgentState) -> Dict:
         """
         Node 3: Get relevant code from vector store.
-        
+
         Input: user_query, project_id
         Output: retrieved_context
         """
@@ -859,11 +862,11 @@ class AgentNodes:
         # (Implementation depends on vector store)
         context = []
         return {"retrieved_context": context}
-    
+
     async def generate_response(self, state: AgentState) -> Dict:
         """
         Node 4: Generate final response using LLM.
-        
+
         Input: user_query, intent, search_results, retrieved_context
         Output: explanation
         """
@@ -871,7 +874,7 @@ class AgentNodes:
         intent = state.get("intent")
         search_results = state.get("search_results")
         context = state.get("retrieved_context", [])
-        
+
         # Build prompt based on intent
         if intent == "web_search":
             # Include search results
@@ -881,13 +884,12 @@ class AgentNodes:
             # Use code context
             code_context = "\n".join([c["content"] for c in context])
             prompt = f"Code context:\n{code_context}\n\nQuestion: {query}"
-        
+
         # Generate response
-        response = await self.llm.generate([
-            {"role": "system", "content": "You are a helpful coding assistant."},
-            {"role": "user", "content": prompt}
-        ])
-        
+        response = await self.llm.generate(
+            [{"role": "system", "content": "You are a helpful coding assistant."}, {"role": "user", "content": prompt}]
+        )
+
         return {"explanation": response}
 ```
 
@@ -902,10 +904,11 @@ class AgentNodes:
 ```python
 from langgraph.graph import StateGraph, END
 
+
 def create_agent_graph(llm_provider, search_service):
     """
     Create the agent workflow graph.
-    
+
     Workflow:
     1. Classify intent
     2. If web_search → search web
@@ -913,34 +916,34 @@ def create_agent_graph(llm_provider, search_service):
        Else → skip to response
     3. Generate response
     """
-    
+
     # Initialize nodes
     nodes = AgentNodes(llm_provider, search_service)
-    
+
     # Create graph
     workflow = StateGraph(AgentState)
-    
+
     # Add nodes
     workflow.add_node("classify_intent", nodes.classify_intent)
     workflow.add_node("web_search", nodes.web_search)
     workflow.add_node("retrieve_context", nodes.retrieve_context)
     workflow.add_node("generate_response", nodes.generate_response)
-    
+
     # Set entry point
     workflow.set_entry_point("classify_intent")
-    
+
     # Add conditional routing
     def route_after_classification(state: AgentState) -> str:
         """Decide next step based on intent."""
         intent = state.get("intent")
-        
+
         if intent == "web_search":
             return "web_search"
         elif intent in ["code_explanation", "code_debug"]:
             return "retrieve_context"
         else:
             return "generate_response"
-    
+
     workflow.add_conditional_edges(
         "classify_intent",
         route_after_classification,
@@ -948,16 +951,16 @@ def create_agent_graph(llm_provider, search_service):
             "web_search": "web_search",
             "retrieve_context": "retrieve_context",
             "generate_response": "generate_response",
-        }
+        },
     )
-    
+
     # After web search or context retrieval, generate response
     workflow.add_edge("web_search", "generate_response")
     workflow.add_edge("retrieve_context", "generate_response")
-    
+
     # After response, end
     workflow.add_edge("generate_response", END)
-    
+
     return workflow.compile()
 ```
 
@@ -1021,23 +1024,22 @@ infrastructure/
 from app.application.ports.output.repositories.user_repository import UserRepository
 from app.domain.models.user import User
 
+
 class PostgresUserRepository(UserRepository):
     """PostgreSQL implementation of user repository."""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+
     async def find_by_id(self, user_id: UUID) -> Optional[User]:
         """Find user by ID."""
         # SQL query
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.id == user_id)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.id == user_id))
         db_user = result.scalar_one_or_none()
-        
+
         if not db_user:
             return None
-        
+
         # Convert database model to domain model
         return User(
             id=db_user.id,
@@ -1048,19 +1050,17 @@ class PostgresUserRepository(UserRepository):
             updated_at=db_user.updated_at,
             is_active=db_user.is_active,
         )
-    
+
     async def find_by_email(self, email: str) -> Optional[User]:
         """Find user by email."""
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.email == email)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.email == email))
         db_user = result.scalar_one_or_none()
-        
+
         if not db_user:
             return None
-        
+
         return self._to_domain(db_user)
-    
+
     async def save(self, user: User) -> User:
         """Save user to database."""
         # Convert domain model to database model
@@ -1073,13 +1073,13 @@ class PostgresUserRepository(UserRepository):
             updated_at=user.updated_at,
             is_active=user.is_active,
         )
-        
+
         self.session.add(db_user)
         await self.session.commit()
         await self.session.refresh(db_user)
-        
+
         return self._to_domain(db_user)
-    
+
     def _to_domain(self, db_user: UserModel) -> User:
         """Convert database model to domain model."""
         return User(
@@ -1107,13 +1107,14 @@ class PostgresUserRepository(UserRepository):
 from app.application.ports.output.llm.llm_provider import LLMProvider
 from openai import AsyncOpenAI
 
+
 class OpenAIProvider(LLMProvider):
     """OpenAI implementation of LLM provider."""
-    
+
     def __init__(self, api_key: str, model: str = "gpt-4-turbo-preview"):
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
-    
+
     async def generate(self, messages: List[Dict[str, str]]) -> str:
         """Generate text using OpenAI."""
         response = await self.client.chat.completions.create(
@@ -1122,7 +1123,7 @@ class OpenAIProvider(LLMProvider):
             temperature=0.7,
         )
         return response.choices[0].message.content
-    
+
     async def stream(self, messages: List[Dict[str, str]]) -> AsyncIterator[str]:
         """Stream generated text."""
         stream = await self.client.chat.completions.create(
@@ -1130,11 +1131,11 @@ class OpenAIProvider(LLMProvider):
             messages=messages,
             stream=True,
         )
-        
+
         async for chunk in stream:
             if chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
-    
+
     async def get_embedding(self, text: str) -> List[float]:
         """Get embedding vector."""
         response = await self.client.embeddings.create(
@@ -1155,13 +1156,14 @@ class OpenAIProvider(LLMProvider):
 ```python
 from tavily import TavilyClient
 
+
 class TavilySearchService:
     """Service for web search using Tavily API."""
-    
+
     def __init__(self, api_key: str, max_results: int = 5):
         self.client = TavilyClient(api_key=api_key)
         self.max_results = max_results
-    
+
     async def search(
         self,
         query: str,
@@ -1170,12 +1172,12 @@ class TavilySearchService:
     ) -> Dict[str, Any]:
         """
         Search the web for information.
-        
+
         Args:
             query: Search query
             max_results: Max results to return
             include_answer: Include AI-generated answer
-        
+
         Returns:
             {
                 "query": str,
@@ -1190,21 +1192,21 @@ class TavilySearchService:
             max_results=max_results or self.max_results,
             include_answer=include_answer,
         )
-        
+
         return response
-    
+
     def format_results_for_context(self, search_response: Dict) -> str:
         """
         Format search results for LLM context.
-        
+
         Converts JSON to readable text that LLM can understand.
         """
         formatted = []
-        
+
         # Add quick answer
         if answer := search_response.get("answer"):
             formatted.append(f"**Quick Answer:** {answer}\n")
-        
+
         # Add search results
         results = search_response.get("results", [])
         if results:
@@ -1213,11 +1215,11 @@ class TavilySearchService:
                 title = result.get("title", "No title")
                 url = result.get("url", "")
                 content = result.get("content", "")
-                
+
                 formatted.append(f"{i}. **{title}**")
                 formatted.append(f"   URL: {url}")
                 formatted.append(f"   {content}\n")
-        
+
         return "\n".join(formatted)
 ```
 
@@ -1245,73 +1247,62 @@ response = await llm.generate([{"role": "user", "content": prompt}])
 from jose import jwt
 from datetime import datetime, timedelta
 
+
 class JWTHandler:
     """Handler for JWT token operations."""
-    
+
     def __init__(self, secret_key: str, algorithm: str = "HS256"):
         self.secret_key = secret_key
         self.algorithm = algorithm
-    
-    def create_access_token(
-        self,
-        user_id: str,
-        expires_delta: timedelta = timedelta(minutes=30)
-    ) -> str:
+
+    def create_access_token(self, user_id: str, expires_delta: timedelta = timedelta(minutes=30)) -> str:
         """
         Create JWT access token.
-        
+
         Token contains:
         - user_id: Who the user is
         - exp: When token expires
         - type: "access" (vs "refresh")
         """
         expire = datetime.utcnow() + expires_delta
-        
+
         payload = {
             "sub": str(user_id),  # Subject (user ID)
-            "exp": expire,         # Expiration time
-            "type": "access",      # Token type
+            "exp": expire,  # Expiration time
+            "type": "access",  # Token type
         }
-        
+
         token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
         return token
-    
-    def create_refresh_token(
-        self,
-        user_id: str,
-        expires_delta: timedelta = timedelta(days=7)
-    ) -> str:
+
+    def create_refresh_token(self, user_id: str, expires_delta: timedelta = timedelta(days=7)) -> str:
         """Create JWT refresh token (longer lived)."""
         expire = datetime.utcnow() + expires_delta
-        
+
         payload = {
             "sub": str(user_id),
             "exp": expire,
             "type": "refresh",
         }
-        
+
         token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
         return token
-    
+
     def decode_token(self, token: str) -> Dict[str, Any]:
         """
         Decode and validate JWT token.
-        
+
         Raises:
             JWTError: If token is invalid or expired
         """
         try:
-            payload = jwt.decode(
-                token,
-                self.secret_key,
-                algorithms=[self.algorithm]
-            )
+            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
             return payload
         except jwt.ExpiredSignatureError:
             raise TokenExpiredError()
         except jwt.JWTError:
             raise InvalidTokenError()
-    
+
     def get_user_id_from_token(self, token: str) -> str:
         """Extract user ID from token."""
         payload = self.decode_token(token)
@@ -1329,11 +1320,7 @@ access_token = jwt_handler.create_access_token(user.id)
 refresh_token = jwt_handler.create_refresh_token(user.id)
 
 # Return to client
-return {
-    "access_token": access_token,
-    "refresh_token": refresh_token,
-    "token_type": "bearer"
-}
+return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 # Protected endpoint
 token = request.headers["Authorization"].replace("Bearer ", "")
@@ -1351,46 +1338,48 @@ user_id = jwt_handler.get_user_id_from_token(token)
 ```python
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # Application
     app_name: str = "ByteBuddhi"
     app_env: str = "development"
     debug: bool = True
-    
+
     # Database
     database_url: str
     database_pool_size: int = 20
-    
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
-    
+
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    
+
     # OpenAI
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4-turbo-preview"
-    
+
     # Anthropic
     anthropic_api_key: Optional[str] = None
     anthropic_model: str = "claude-3-5-sonnet-20241022"
-    
+
     # Tavily
     tavily_api_key: Optional[str] = None
     tavily_max_results: int = 5
-    
+
     # LangSmith
     langchain_tracing_v2: bool = True
     langchain_api_key: Optional[str] = None
     langchain_project: str = "bytebuddhi-dev"
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = False
+
 
 # Global settings instance
 settings = Settings()
@@ -1460,6 +1449,7 @@ from app.interfaces.api.v1.schemas.auth_schemas import (
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+
 @router.post("/register", response_model=AuthResponse, status_code=201)
 async def register(
     request: RegisterRequest,
@@ -1468,7 +1458,7 @@ async def register(
 ):
     """
     Register a new user.
-    
+
     Steps:
     1. Validate request data (automatic via Pydantic)
     2. Check if user exists
@@ -1481,25 +1471,25 @@ async def register(
     existing_user = await user_repo.find_by_email(request.email)
     if existing_user:
         raise HTTPException(status_code=409, detail="Email already registered")
-    
+
     # Hash password
     password_hasher = PasswordHasher()
     password_hash = password_hasher.hash(request.password)
-    
+
     # Create user (domain logic)
     user = User.create(
         email=request.email,
         username=request.username,
         password_hash=password_hash,
     )
-    
+
     # Save user
     saved_user = await user_repo.save(user)
-    
+
     # Generate tokens
     access_token = jwt_handler.create_access_token(saved_user.id)
     refresh_token = jwt_handler.create_refresh_token(saved_user.id)
-    
+
     # Return response
     return AuthResponse(
         user_id=saved_user.id,
@@ -1509,6 +1499,7 @@ async def register(
         refresh_token=refresh_token,
         token_type="bearer",
     )
+
 
 @router.post("/login", response_model=AuthResponse)
 async def login(
@@ -1521,20 +1512,20 @@ async def login(
     user = await user_repo.find_by_email(request.email)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     # Verify password
     password_hasher = PasswordHasher()
     if not password_hasher.verify(request.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     # Check if active
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
-    
+
     # Generate tokens
     access_token = jwt_handler.create_access_token(user.id)
     refresh_token = jwt_handler.create_refresh_token(user.id)
-    
+
     return AuthResponse(
         user_id=user.id,
         email=user.email,
@@ -1559,6 +1550,7 @@ from app.application.agent.graph import ByteBuddhiAgent
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
+
 @router.post("/conversations/{conversation_id}/messages")
 async def send_message(
     conversation_id: str,
@@ -1568,7 +1560,7 @@ async def send_message(
 ):
     """
     Send a message to the AI agent.
-    
+
     Flow:
     1. Validate user has access to conversation
     2. Process message through agent
@@ -1581,7 +1573,7 @@ async def send_message(
         project_id=request.project_id,
         conversation_history=request.history,
     )
-    
+
     # Return response
     return {
         "message_id": str(uuid4()),
@@ -1590,7 +1582,7 @@ async def send_message(
         "metadata": {
             "has_code": result.get("generated_code") is not None,
             "has_search_results": result.get("search_results") is not None,
-        }
+        },
     }
 ```
 
@@ -1605,19 +1597,25 @@ async def send_message(
 ```python
 from pydantic import BaseModel, EmailStr, Field
 
+
 class RegisterRequest(BaseModel):
     """Request schema for user registration."""
+
     email: EmailStr  # Validates email format
     username: str = Field(min_length=3, max_length=50)
     password: str = Field(min_length=8, max_length=100)
 
+
 class LoginRequest(BaseModel):
     """Request schema for user login."""
+
     email: EmailStr
     password: str
 
+
 class AuthResponse(BaseModel):
     """Response schema for authentication."""
+
     user_id: UUID
     email: str
     username: str

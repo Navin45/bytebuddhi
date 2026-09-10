@@ -1,13 +1,12 @@
 """User domain model."""
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 
 class User:
     """Domain model for User entity.
-    
+
     Represents a user in the ByteBuddhi system with authentication,
     quota management, and API access capabilities.
     """
@@ -21,11 +20,11 @@ class User:
         created_at: datetime,
         updated_at: datetime,
         is_active: bool = True,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         usage_quota: int = 1000,
     ):
         """Initialize User entity.
-        
+
         Args:
             id: Unique user identifier
             email: User email address
@@ -52,16 +51,16 @@ class User:
         email: str,
         username: str,
         password_hash: str,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ) -> "User":
         """Factory method to create a new user.
-        
+
         Args:
             email: User email address
             username: Unique username
             password_hash: Hashed password
             api_key: Optional API key
-            
+
         Returns:
             User: New user instance
         """
@@ -90,7 +89,7 @@ class User:
 
     def update_quota(self, new_quota: int) -> None:
         """Update the user's usage quota.
-        
+
         Args:
             new_quota: New quota limit
         """
@@ -99,7 +98,7 @@ class User:
 
     def update_api_key(self, new_api_key: str) -> None:
         """Update the user's API key.
-        
+
         Args:
             new_api_key: New API key
         """
@@ -108,7 +107,7 @@ class User:
 
     def update_password(self, new_password_hash: str) -> None:
         """Update the user's password hash.
-        
+
         Args:
             new_password_hash: New bcrypt password hash
         """

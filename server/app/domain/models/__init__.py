@@ -9,11 +9,11 @@ from app.domain.models.project import Project
 from app.domain.models.user import User
 
 __all__ = [
-    "User",
-    "Project",
-    "File",
     "CodeChunk",
-    "Embedding",
     "Conversation",
+    "Embedding",
+    "File",
     "Message",
+    "Project",
+    "User",
 ]

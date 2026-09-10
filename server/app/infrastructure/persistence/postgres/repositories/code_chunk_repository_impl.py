@@ -1,6 +1,5 @@
 """Code chunk repository implementation."""
 
-from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -37,25 +36,21 @@ class CodeChunkRepositoryImpl(CodeChunkRepository):
         await self.session.flush()
         return self._to_domain(chunk_model)
 
-    async def get_by_id(self, chunk_id: UUID) -> Optional[CodeChunk]:
+    async def get_by_id(self, chunk_id: UUID) -> CodeChunk | None:
         """Get code chunk by ID."""
-        result = await self.session.execute(
-            select(CodeChunkModel).where(CodeChunkModel.id == chunk_id)
-        )
+        result = await self.session.execute(select(CodeChunkModel).where(CodeChunkModel.id == chunk_id))
         chunk_model = result.scalar_one_or_none()
         return self._to_domain(chunk_model) if chunk_model else None
 
-    async def get_by_file_id(self, file_id: UUID) -> List[CodeChunk]:
+    async def get_by_file_id(self, file_id: UUID) -> list[CodeChunk]:
         """Get all code chunks for a file."""
         result = await self.session.execute(
-            select(CodeChunkModel)
-            .where(CodeChunkModel.file_id == file_id)
-            .order_by(CodeChunkModel.chunk_index)
+            select(CodeChunkModel).where(CodeChunkModel.file_id == file_id).order_by(CodeChunkModel.chunk_index)
         )
         chunk_models = result.scalars().all()
         return [self._to_domain(model) for model in chunk_models]
 
-    async def get_by_project_id(self, project_id: UUID) -> List[CodeChunk]:
+    async def get_by_project_id(self, project_id: UUID) -> list[CodeChunk]:
         """Get all code chunks for a project."""
         result = await self.session.execute(
             select(CodeChunkModel)
@@ -67,9 +62,7 @@ class CodeChunkRepositoryImpl(CodeChunkRepository):
 
     async def delete_by_file_id(self, file_id: UUID) -> bool:
         """Delete all code chunks for a file."""
-        result = await self.session.execute(
-            delete(CodeChunkModel).where(CodeChunkModel.file_id == file_id)
-        )
+        result = await self.session.execute(delete(CodeChunkModel).where(CodeChunkModel.file_id == file_id))
         await self.session.flush()
         return result.rowcount > 0
 

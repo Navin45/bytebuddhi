@@ -5,7 +5,7 @@ from app.infrastructure.auth.password_hasher import PasswordHasher, password_has
 
 __all__ = [
     "JWTHandler",
-    "jwt_handler",
     "PasswordHasher",
+    "jwt_handler",
     "password_hasher",
 ]

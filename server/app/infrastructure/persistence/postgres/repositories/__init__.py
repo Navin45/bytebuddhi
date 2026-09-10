@@ -23,11 +23,11 @@ from app.infrastructure.persistence.postgres.repositories.user_repository_impl i
 )
 
 __all__ = [
-    "UserRepositoryImpl",
-    "ProjectRepositoryImpl",
-    "ConversationRepositoryImpl",
-    "MessageRepositoryImpl",
-    "FileRepositoryImpl",
     "CodeChunkRepositoryImpl",
+    "ConversationRepositoryImpl",
     "EmbeddingRepositoryImpl",
+    "FileRepositoryImpl",
+    "MessageRepositoryImpl",
+    "ProjectRepositoryImpl",
+    "UserRepositoryImpl",
 ]

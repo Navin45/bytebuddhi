@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -9,8 +8,8 @@ class CreateConversationDTO(BaseModel):
     """DTO for creating a conversation."""
 
     user_id: UUID
-    project_id: Optional[UUID] = None
-    title: Optional[str] = None
+    project_id: UUID | None = None
+    title: str | None = None
 
 
 class SendMessageDTO(BaseModel):
@@ -19,7 +18,7 @@ class SendMessageDTO(BaseModel):
     conversation_id: UUID
     content: str
     role: str = "user"
-    parent_message_id: Optional[UUID] = None
+    parent_message_id: UUID | None = None
 
 
 class ConversationResponseDTO(BaseModel):
@@ -27,8 +26,8 @@ class ConversationResponseDTO(BaseModel):
 
     id: UUID
     user_id: UUID
-    project_id: Optional[UUID]
-    title: Optional[str]
+    project_id: UUID | None
+    title: str | None
     created_at: datetime
     updated_at: datetime
     is_archived: bool
@@ -45,8 +44,8 @@ class MessageResponseDTO(BaseModel):
     role: str
     content: str
     created_at: datetime
-    parent_message_id: Optional[UUID]
-    feedback: Optional[int]
+    parent_message_id: UUID | None
+    feedback: int | None
 
     class Config:
         from_attributes = True

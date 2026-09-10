@@ -11,10 +11,10 @@ import sys
 
 def main():
     """Run database migrations."""
-    print("="*60)
+    print("=" * 60)
     print("Running Database Migrations")
-    print("="*60)
-    
+    print("=" * 60)
+
     try:
         # Run alembic upgrade head
         result = subprocess.run(
@@ -23,14 +23,14 @@ def main():
             capture_output=True,
             text=True,
         )
-        
+
         print(result.stdout)
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("Migrations completed successfully!")
-        print("="*60)
+        print("=" * 60)
         sys.exit(0)
-        
+
     except subprocess.CalledProcessError as e:
         print("\n Migration failed!")
         print(f"Error: {e.stderr}")

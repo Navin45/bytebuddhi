@@ -1,6 +1,5 @@
 """User repository implementation."""
 
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -34,37 +33,29 @@ class UserRepositoryImpl(UserRepository):
         await self.session.flush()
         return self._to_domain(user_model)
 
-    async def get_by_id(self, user_id: UUID) -> Optional[User]:
+    async def get_by_id(self, user_id: UUID) -> User | None:
         """Get user by ID."""
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.id == user_id)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.id == user_id))
         user_model = result.scalar_one_or_none()
         return self._to_domain(user_model) if user_model else None
 
-    async def get_by_email(self, email: str) -> Optional[User]:
+    async def get_by_email(self, email: str) -> User | None:
         """Get user by email."""
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.email == email)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.email == email))
         user_model = result.scalar_one_or_none()
         return self._to_domain(user_model) if user_model else None
 
-    async def get_by_username(self, username: str) -> Optional[User]:
+    async def get_by_username(self, username: str) -> User | None:
         """Get user by username."""
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.username == username)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.username == username))
         user_model = result.scalar_one_or_none()
         return self._to_domain(user_model) if user_model else None
 
     async def update(self, user: User) -> User:
         """Update user."""
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.id == user.id)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.id == user.id))
         user_model = result.scalar_one()
-        
+
         user_model.email = user.email
         user_model.username = user.username
         user_model.password_hash = user.password_hash
@@ -72,15 +63,13 @@ class UserRepositoryImpl(UserRepository):
         user_model.is_active = user.is_active
         user_model.api_key = user.api_key
         user_model.usage_quota = user.usage_quota
-        
+
         await self.session.flush()
         return self._to_domain(user_model)
 
     async def delete(self, user_id: UUID) -> bool:
         """Delete user."""
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.id == user_id)
-        )
+        result = await self.session.execute(select(UserModel).where(UserModel.id == user_id))
         user_model = result.scalar_one_or_none()
         if user_model:
             await self.session.delete(user_model)
@@ -90,16 +79,12 @@ class UserRepositoryImpl(UserRepository):
 
     async def exists_by_email(self, email: str) -> bool:
         """Check if user exists by email."""
-        result = await self.session.execute(
-            select(UserModel.id).where(UserModel.email == email)
-        )
+        result = await self.session.execute(select(UserModel.id).where(UserModel.email == email))
         return result.scalar_one_or_none() is not None
 
     async def exists_by_username(self, username: str) -> bool:
         """Check if user exists by username."""
-        result = await self.session.execute(
-            select(UserModel.id).where(UserModel.username == username)
-        )
+        result = await self.session.execute(select(UserModel.id).where(UserModel.username == username))
         return result.scalar_one_or_none() is not None
 
     @staticmethod

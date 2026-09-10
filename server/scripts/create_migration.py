@@ -12,17 +12,17 @@ import sys
 def main():
     """Create a new migration."""
     if len(sys.argv) < 2:
-        print(" Usage: python scripts/create_migration.py \"migration description\"")
+        print(' Usage: python scripts/create_migration.py "migration description"')
         print("\nExample:")
-        print("  python scripts/create_migration.py \"add user table\"")
+        print('  python scripts/create_migration.py "add user table"')
         sys.exit(1)
-    
+
     description = sys.argv[1]
-    
-    print("="*60)
+
+    print("=" * 60)
     print(f"Creating Migration: {description}")
-    print("="*60)
-    
+    print("=" * 60)
+
     try:
         # Run alembic revision with autogenerate
         result = subprocess.run(
@@ -31,18 +31,18 @@ def main():
             capture_output=True,
             text=True,
         )
-        
+
         print(result.stdout)
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("Migration created successfully!")
-        print("="*60)
+        print("=" * 60)
         print("\nNext steps:")
         print("1. Review the generated migration file")
         print("2. Make any necessary manual adjustments")
         print("3. Run: python scripts/migrate.py")
         sys.exit(0)
-        
+
     except subprocess.CalledProcessError as e:
         print("\n Migration creation failed!")
         print(f"Error: {e.stderr}")

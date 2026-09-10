@@ -1,6 +1,5 @@
 """Embedding repository implementation."""
 
-from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -34,60 +33,44 @@ class EmbeddingRepositoryImpl(EmbeddingRepository):
         await self.session.flush()
         return self._to_domain(embedding_model)
 
-    async def get_by_id(self, embedding_id: UUID) -> Optional[Embedding]:
+    async def get_by_id(self, embedding_id: UUID) -> Embedding | None:
         """Get embedding by ID."""
-        result = await self.session.execute(
-            select(EmbeddingModel).where(EmbeddingModel.id == embedding_id)
-        )
+        result = await self.session.execute(select(EmbeddingModel).where(EmbeddingModel.id == embedding_id))
         embedding_model = result.scalar_one_or_none()
         return self._to_domain(embedding_model) if embedding_model else None
 
-    async def get_by_code_chunk_id(self, code_chunk_id: UUID) -> Optional[Embedding]:
+    async def get_by_code_chunk_id(self, code_chunk_id: UUID) -> Embedding | None:
         """Get embedding by code chunk ID."""
-        result = await self.session.execute(
-            select(EmbeddingModel).where(
-                EmbeddingModel.code_chunk_id == code_chunk_id
-            )
-        )
+        result = await self.session.execute(select(EmbeddingModel).where(EmbeddingModel.code_chunk_id == code_chunk_id))
         embedding_model = result.scalar_one_or_none()
         return self._to_domain(embedding_model) if embedding_model else None
 
     async def search_similar(
-        self, 
-        project_id: UUID,
-        query_vector: List[float],
-        limit: int = 10
-    ) -> List[tuple[Embedding, float]]:
+        self, project_id: UUID, query_vector: list[float], limit: int = 10
+    ) -> list[tuple[Embedding, float]]:
         """Search for similar embeddings using vector similarity.
-        
+
         Uses pgvector's cosine distance operator (<=>).
         Lower distance = higher similarity.
         """
         # Build query with pgvector cosine distance
-        query = select(
-            EmbeddingModel,
-            EmbeddingModel.embedding.cosine_distance(query_vector).label("distance")
-        ).where(
-            EmbeddingModel.project_id == project_id
-        ).order_by(
-            "distance"
-        ).limit(limit)
-        
+        query = (
+            select(EmbeddingModel, EmbeddingModel.embedding.cosine_distance(query_vector).label("distance"))
+            .where(EmbeddingModel.project_id == project_id)
+            .order_by("distance")
+            .limit(limit)
+        )
+
         result = await self.session.execute(query)
         rows = result.all()
-        
+
         # Convert to domain models with similarity scores
         # Similarity = 1 - distance (so higher is better)
-        return [
-            (self._to_domain(row[0]), 1.0 - row[1])
-            for row in rows
-        ]
+        return [(self._to_domain(row[0]), 1.0 - row[1]) for row in rows]
 
     async def delete_by_project_id(self, project_id: UUID) -> bool:
         """Delete all embeddings for a project."""
-        result = await self.session.execute(
-            delete(EmbeddingModel).where(EmbeddingModel.project_id == project_id)
-        )
+        result = await self.session.execute(delete(EmbeddingModel).where(EmbeddingModel.project_id == project_id))
         await self.session.flush()
         return result.rowcount > 0
 

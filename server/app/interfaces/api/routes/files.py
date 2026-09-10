@@ -6,7 +6,6 @@ file upload, retrieval, deletion, processing, and semantic search.
 
 import hashlib
 from datetime import datetime
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -64,20 +63,20 @@ async def upload_file(
     storage_service: FileStorageService = Depends(get_file_storage_service),
 ):
     """Upload a file to a project.
-    
+
     Validates file type and size, calculates content hash for deduplication,
     and stores file metadata in the database.
-    
+
     Args:
         project_id: Project ID
         request: File upload data
         current_user: Authenticated user
         file_repo: File repository instance
         project_repo: Project repository instance
-        
+
     Returns:
         FileResponse: Uploaded file information
-        
+
     Raises:
         HTTPException: If project not found, unauthorized, or validation fails
     """
@@ -88,41 +87,41 @@ async def upload_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    
+
     if project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to upload files to this project",
         )
-    
+
     # Validate file type
     if request.file_type not in settings.allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File type '{request.file_type}' not allowed. Allowed types: {settings.allowed_extensions}",
         )
-    
+
     # Calculate file size and validate
-    content_bytes = request.content.encode('utf-8')
+    content_bytes = request.content.encode("utf-8")
     size_bytes = len(content_bytes)
     max_size_bytes = settings.max_upload_size_mb * 1024 * 1024
-    
+
     if size_bytes > max_size_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File size ({size_bytes} bytes) exceeds maximum ({max_size_bytes} bytes)",
         )
-    
+
     # Calculate content hash (SHA-256)
     content_hash = hashlib.sha256(content_bytes).hexdigest()
-    
+
     # Check if file already exists at this path
     if await file_repo.exists_by_path(project_id, request.file_path):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"File already exists at path '{request.file_path}'",
         )
-    
+
     # Create file
     file = File.create(
         project_id=project_id,
@@ -133,9 +132,9 @@ async def upload_file(
         content_hash=content_hash,
         last_modified=datetime.utcnow(),
     )
-    
+
     created_file = await file_repo.create(file)
-    
+
     # Save file content to storage
     try:
         await storage_service.save_file(
@@ -156,7 +155,7 @@ async def upload_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save file content",
         )
-    
+
     logger.info(
         "File uploaded",
         file_id=str(created_file.id),
@@ -164,7 +163,7 @@ async def upload_file(
         user_id=str(current_user.id),
         file_path=request.file_path,
     )
-    
+
     return FileResponse.model_validate(created_file)
 
 
@@ -177,19 +176,19 @@ async def list_files(
     project_repo: ProjectRepository = Depends(get_project_repository),
 ):
     """List all files in a project.
-    
+
     Returns files ordered by creation date (most recent first).
-    
+
     Args:
         project_id: Project ID
         include_deleted: Whether to include soft-deleted files
         current_user: Authenticated user
         file_repo: File repository instance
         project_repo: Project repository instance
-        
+
     Returns:
         FileListResponse: List of files with total count
-        
+
     Raises:
         HTTPException: If project not found or user doesn't own it
     """
@@ -200,15 +199,15 @@ async def list_files(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    
+
     if project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this project",
         )
-    
+
     files = await file_repo.get_by_project_id(project_id, include_deleted=include_deleted)
-    
+
     return FileListResponse(
         files=[FileResponse.model_validate(f) for f in files],
         total=len(files),
@@ -224,17 +223,17 @@ async def get_file(
     project_repo: ProjectRepository = Depends(get_project_repository),
 ):
     """Get file metadata by ID.
-    
+
     Args:
-        project_id: Project ID  
+        project_id: Project ID
         file_id: File ID
         current_user: Authenticated user
         file_repo: File repository instance
         project_repo: Project repository instance
-        
+
     Returns:
         FileResponse: File information
-        
+
     Raises:
         HTTPException: If file/project not found or unauthorized
     """
@@ -245,27 +244,27 @@ async def get_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    
+
     if project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this project",
         )
-    
+
     file = await file_repo.get_by_id(file_id)
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
-    
+
     # Verify file belongs to this project
     if file.project_id != project_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found in this project",
         )
-    
+
     return FileResponse.model_validate(file)
 
 
@@ -279,17 +278,17 @@ async def delete_file(
     storage_service: FileStorageService = Depends(get_file_storage_service),
 ):
     """Soft delete a file.
-    
+
     Sets the file's is_deleted flag to True. The file remains in the database
     but won't appear in standard file listings.
-    
+
     Args:
         project_id: Project ID
         file_id: File ID
         current_user: Authenticated user
         file_repo: File repository instance
         project_repo: Project repository instance
-        
+
     Raises:
         HTTPException: If file/project not found or unauthorized
     """
@@ -300,30 +299,30 @@ async def delete_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    
+
     if project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this project",
         )
-    
+
     file = await file_repo.get_by_id(file_id)
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
-    
+
     # Verify file belongs to this project
     if file.project_id != project_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found in this project",
         )
-    
+
     # Soft delete in database
     await file_repo.delete(file_id)
-    
+
     # Delete file content from storage
     try:
         await storage_service.delete_file(project_id, file_id)
@@ -333,7 +332,7 @@ async def delete_file(
             file_id=str(file_id),
             error=str(e),
         )
-    
+
     logger.info(
         "File deleted",
         file_id=str(file_id),
@@ -355,12 +354,12 @@ async def process_file(
     storage_service: FileStorageService = Depends(get_file_storage_service),
 ):
     """Process a file to generate code chunks and embeddings.
-    
+
     This endpoint:
     1. Splits the file into semantic code chunks
     2. Generates embeddings for each chunk using OpenAI
     3. Stores chunks and embeddings for semantic search
-    
+
     Args:
         project_id: Project ID
         file_id: File ID to process
@@ -370,10 +369,10 @@ async def process_file(
         code_chunk_repo: Code chunk repository
         embedding_repo: Embedding repository
         llm_provider: LLM provider for embeddings
-        
+
     Returns:
         FileProcessingResponse: Processing results
-        
+
     Raises:
         HTTPException: If file/project not found or unauthorized
     """
@@ -384,13 +383,13 @@ async def process_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    
+
     if project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to process files in this project",
         )
-    
+
     # Get file
     file = await file_repo.get_by_id(file_id)
     if not file or file.project_id != project_id:
@@ -398,7 +397,7 @@ async def process_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
-    
+
     # Retrieve file content from storage
     file_content = await storage_service.get_file(project_id, file_id)
     if not file_content:
@@ -406,14 +405,14 @@ async def process_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File content not found in storage",
         )
-    
+
     # Create processing service
     processing_service = FileProcessingService(
         code_chunk_repo=code_chunk_repo,
         embedding_repo=embedding_repo,
         llm_provider=llm_provider,
     )
-    
+
     # Process file
     result = await processing_service.process_file(
         file_id=file_id,
@@ -421,7 +420,7 @@ async def process_file(
         file_content=file_content,
         file_type=file.file_type,
     )
-    
+
     return FileProcessingResponse(
         file_id=file_id,
         chunks_created=result["chunks_created"],
@@ -442,9 +441,9 @@ async def search_code(
     llm_provider: LLMProvider = Depends(get_embedding_provider),
 ):
     """Search for code using semantic similarity.
-    
+
     Uses vector embeddings to find code chunks similar to the query.
-    
+
     Args:
         project_id: Project ID to search within
         query: Search query text
@@ -454,10 +453,10 @@ async def search_code(
         code_chunk_repo: Code chunk repository
         embedding_repo: Embedding repository
         llm_provider: LLM provider for query embedding
-        
+
     Returns:
         CodeSearchResponse: Search results with similarity scores
-        
+
     Raises:
         HTTPException: If project not found or unauthorized
     """
@@ -468,33 +467,33 @@ async def search_code(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    
+
     if project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to search this project",
         )
-    
+
     # Validate limit
     if not (1 <= limit <= 50):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Limit must be between 1 and 50",
         )
-    
+
     # Create processing service and search
     processing_service = FileProcessingService(
         code_chunk_repo=code_chunk_repo,
         embedding_repo=embedding_repo,
         llm_provider=llm_provider,
     )
-    
+
     results = await processing_service.search_code(
         project_id=project_id,
         query=query,
         limit=limit,
     )
-    
+
     # Convert to response format
     search_results = [
         CodeSearchResult(
@@ -507,7 +506,7 @@ async def search_code(
         )
         for r in results
     ]
-    
+
     return CodeSearchResponse(
         results=search_results,
         total=len(search_results),

@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from pydantic import Field, PostgresDsn, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,9 +24,7 @@ class Settings(BaseSettings):
     workers: int = 4
 
     # Database
-    database_url: PostgresDsn = Field(
-        default="postgresql+asyncpg://bytebuddhi:password@localhost:5432/bytebuddhi"
-    )
+    database_url: PostgresDsn = Field(default="postgresql+asyncpg://bytebuddhi:password@localhost:5432/bytebuddhi")
     database_pool_size: int = 20
     database_max_overflow: int = 10
 
@@ -43,28 +39,26 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     # OpenAI
-    openai_api_key: Optional[str] = None
+    openai_api_key: str | None = None
     openai_model: str = "gpt-4-turbo-preview"
     openai_embedding_model: str = "text-embedding-3-small"
 
     # Anthropic
-    anthropic_api_key: Optional[str] = None
+    anthropic_api_key: str | None = None
     anthropic_model: str = "claude-3-5-sonnet-20241022"
 
     # Tavily Search
-    tavily_api_key: Optional[str] = None
+    tavily_api_key: str | None = None
     tavily_max_results: int = 5
 
     # LangSmith
     langchain_tracing_v2: bool = True
     langchain_endpoint: str = "https://api.smith.langchain.com"
-    langchain_api_key: Optional[str] = None
+    langchain_api_key: str | None = None
     langchain_project: str = "bytebuddhi-dev"
 
     # CORS
-    cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173"]
-    )
+    cors_origins: list[str] = Field(default=["http://localhost:3000", "http://localhost:5173"])
 
     # Rate Limiting
     rate_limit_per_minute: int = 60
@@ -72,9 +66,7 @@ class Settings(BaseSettings):
 
     # File Upload
     max_upload_size_mb: int = 50
-    allowed_extensions: List[str] = Field(
-        default=[".py", ".js", ".ts", ".java", ".go", ".rs", ".cpp", ".c", ".h"]
-    )
+    allowed_extensions: list[str] = Field(default=[".py", ".js", ".ts", ".java", ".go", ".rs", ".cpp", ".c", ".h"])
 
 
 # Global settings instance

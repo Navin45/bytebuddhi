@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 
@@ -38,7 +37,7 @@ class File:
         file_type: str,
         size_bytes: int,
         content_hash: str,
-        last_modified: Optional[datetime] = None,
+        last_modified: datetime | None = None,
     ) -> "File":
         """Factory method to create a new file."""
         now = datetime.utcnow()

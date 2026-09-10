@@ -14,17 +14,17 @@ from pathlib import Path
 
 def run_command(cmd: str, description: str) -> bool:
     """Run a shell command and return success status.
-    
+
     Args:
         cmd: Command to execute
         description: Human-readable description
-        
+
     Returns:
         bool: True if command succeeded
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f" {description}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     try:
         subprocess.run(
             cmd,
@@ -43,14 +43,12 @@ def run_command(cmd: str, description: str) -> bool:
 
 def check_virtual_env() -> bool:
     """Check if running in a virtual environment.
-    
+
     Returns:
         bool: True if in virtual environment or user wants to continue
     """
-    in_venv = hasattr(sys, 'real_prefix') or (
-        hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
-    )
-    
+    in_venv = hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
+
     if not in_venv:
         print("\n  WARNING: Not in a virtual environment!")
         print("It's recommended to activate your virtual environment first:")
@@ -58,42 +56,42 @@ def check_virtual_env() -> bool:
         print("  source .venv/bin/activate  # On Unix/macOS")
         print("  .venv\\Scripts\\activate     # On Windows")
         response = input("\nContinue anyway? (y/N): ")
-        return response.lower() == 'y'
-    
+        return response.lower() == "y"
+
     return True
 
 
 def main():
     """Main setup function."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(" ByteBuddhi Setup Script")
-    print("="*60)
-    
+    print("=" * 60)
+
     # Check virtual environment
     if not check_virtual_env():
         print("Setup cancelled.")
         sys.exit(0)
-    
+
     # Check if requirements.txt exists
     if not Path("requirements.txt").exists():
         print(" requirements.txt not found!")
         print("Make sure you're running this from the server directory.")
         sys.exit(1)
-    
+
     # Install dependencies
     steps = [
         ("pip install --upgrade pip", "Upgrading pip"),
         ("pip install -r requirements.txt", "Installing dependencies"),
     ]
-    
+
     for cmd, desc in steps:
         if not run_command(cmd, desc):
             print(f"\n Setup failed at: {desc}")
             sys.exit(1)
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print(" Setup completed successfully!")
-    print("="*60)
+    print("=" * 60)
     print("\nNext steps:")
     print("1. Copy .env.example to .env and configure your settings")
     print("2. Run: python scripts/setup_db.py")

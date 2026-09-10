@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
 from uuid import UUID
 
 from app.domain.models.project import Project
@@ -14,17 +13,17 @@ class ProjectRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_by_id(self, project_id: UUID) -> Optional[Project]:
+    async def get_by_id(self, project_id: UUID) -> Project | None:
         """Get project by ID."""
         pass
 
     @abstractmethod
-    async def get_by_user_id(self, user_id: UUID) -> List[Project]:
+    async def get_by_user_id(self, user_id: UUID) -> list[Project]:
         """Get all projects for a user."""
         pass
 
     @abstractmethod
-    async def get_by_name(self, user_id: UUID, name: str) -> Optional[Project]:
+    async def get_by_name(self, user_id: UUID, name: str) -> Project | None:
         """Get project by name for a specific user."""
         pass
 

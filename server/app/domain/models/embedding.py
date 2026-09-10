@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID, uuid4
 
 
@@ -11,10 +10,10 @@ class Embedding:
         id: UUID,
         code_chunk_id: UUID,
         project_id: UUID,
-        embedding_vector: List[float],
+        embedding_vector: list[float],
         model_name: str,
         created_at: datetime,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ):
         self.id = id
         self.code_chunk_id = code_chunk_id
@@ -32,9 +31,9 @@ class Embedding:
     def create(
         code_chunk_id: UUID,
         project_id: UUID,
-        embedding_vector: List[float],
+        embedding_vector: list[float],
         model_name: str,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> "Embedding":
         """Factory method to create a new embedding."""
         return Embedding(
