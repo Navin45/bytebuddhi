@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -211,3 +212,37 @@ class MessageModel(Base):
 
     # Constraints
     __table_args__ = (Index("ix_messages_conversation_created", "conversation_id", "created_at"),)
+
+
+class MemoryItemModel(Base):
+    """SQLAlchemy model for durable and project memory items."""
+
+    __tablename__ = "memory_items"
+
+    id = Column(String(100), primary_key=True)
+    scope = Column(String(50), nullable=False, index=True)
+    scope_id = Column(String(100), nullable=False, index=True)
+    memory_type = Column(String(50), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    source = Column(String(100), nullable=False)
+    importance = Column(Float, nullable=False, default=0.5)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_accessed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    extra_metadata = Column(JSON, nullable=True, default=dict)
+    embedding = Column(Vector(1536), nullable=True)
+
+    __table_args__ = (
+        Index("ix_memory_items_scope_scope_id", "scope", "scope_id"),
+        Index("ix_memory_items_type", "memory_type"),
+        Index("ix_memory_items_importance", "importance"),
+        Index("ix_memory_items_expires_at", "expires_at"),
+        Index(
+            "ix_memory_items_embedding",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )

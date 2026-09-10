@@ -19,11 +19,13 @@ from app.application.agent.errors import (
 )
 from app.application.agent.state import AgentLoopState, AgentRunState
 from app.application.agent.types import AgentStatus
+from app.application.memory.orchestrator import MemoryOrchestrator
 from app.application.ports.output.llm.model_gateway import ModelGateway
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import ToolCall
 from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
+from app.domain.models.memory import ExecutionObservation, MemoryScope
 from app.domain.models.workspace import Workspace
 from app.infrastructure.config.logger import get_logger
 
@@ -38,6 +40,7 @@ def create_agent_loop_graph(
     system_prompt: str,
     checkpointer: BaseCheckpointSaver | None = None,
     workspace: Workspace | None = None,
+    memory_orchestrator: MemoryOrchestrator | None = None,
 ) -> CompiledStateGraph:
     """Build and compile the inner agent loop StateGraph using LangGraph."""
 
@@ -60,13 +63,40 @@ def create_agent_loop_graph(
                 "error": err.to_dict(),
             }
 
-        # 2. Build context
+        # 2. Retrieve relevant memories and build model context
         tool_schemas = tool_registry.get_schemas_for_openai()
-        messages = context_engine.build_context(
+        retrieved_memories = []
+        if memory_orchestrator:
+            run_id = state.get("run_id", "")
+            meta = state.get("metadata", {})
+            scopes = [(MemoryScope.AGENT_RUN, run_id)]
+            if project_id := meta.get("project_id"):
+                scopes.append((MemoryScope.PROJECT, str(project_id)))
+            if user_id := meta.get("user_id"):
+                scopes.append((MemoryScope.USER, str(user_id)))
+
+            last_query = ""
+            for m in reversed(state.get("messages", [])):
+                if m.get("role") == "user":
+                    last_query = str(m.get("content", ""))
+                    break
+
+            try:
+                retrieved_memories = await memory_orchestrator.retrieve_memories(
+                    query=last_query or None,
+                    scopes=scopes,
+                    limit=5,
+                )
+            except Exception as me:
+                logger.warning("Failed to retrieve memories for model context", error=str(me))
+
+        model_context = context_engine.build_model_context(
             system_prompt=system_prompt,
             messages=state.get("messages", []),
-            tools=tool_schemas if tool_schemas else None,
+            tool_definitions=tool_schemas if tool_schemas else None,
+            memories=retrieved_memories,
         )
+        messages = model_context.to_model_messages()
 
         # 3. Invoke ModelGateway
         try:
@@ -154,6 +184,20 @@ def create_agent_loop_graph(
             res = await tool_executor.execute(call, context=ctx)
             results.append(res)
 
+            # Record execution observation into working memory
+            if memory_orchestrator:
+                obs = ExecutionObservation.create(
+                    run_id=run_id,
+                    tool_name=res.name,
+                    tool_call_id=res.tool_call_id,
+                    summary=str(res.content)[:200] if res.content else "",
+                    is_error=res.is_error,
+                )
+                try:
+                    await memory_orchestrator.record_observation(obs)
+                except Exception as oe:
+                    logger.warning("Failed to record observation into memory", error=str(oe))
+
         new_tool_messages = [
             ContextEngine.format_tool_result_message(
                 tool_call_id=res.tool_call_id,
@@ -221,6 +265,7 @@ class AgentRuntime:
         ),
         max_iterations: int = 10,
         workspace: Workspace | None = None,
+        memory_orchestrator: MemoryOrchestrator | None = None,
     ):
         self.model_gateway = model_gateway
         self.tool_registry = tool_registry
@@ -230,6 +275,7 @@ class AgentRuntime:
         self.default_system_prompt = default_system_prompt
         self.max_iterations = max_iterations
         self.workspace = workspace or Workspace.create(root_path=".")
+        self.memory_orchestrator = memory_orchestrator
 
         self.graph = create_agent_loop_graph(
             model_gateway=self.model_gateway,
@@ -239,6 +285,7 @@ class AgentRuntime:
             system_prompt=self.default_system_prompt,
             checkpointer=self.checkpointer,
             workspace=self.workspace,
+            memory_orchestrator=self.memory_orchestrator,
         )
 
     async def run(

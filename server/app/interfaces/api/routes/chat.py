@@ -295,12 +295,20 @@ async def send_message(
     # Build messages for LLM
     llm_messages = [{"role": msg.role, "content": msg.content} for msg in history]
 
+    # Build trusted runtime metadata from authenticated session and conversation
+    runtime_metadata = {
+        "user_id": str(current_user.id),
+        "project_id": str(conversation.project_id) if conversation.project_id is not None else None,
+        "conversation_id": str(conversation_id),
+    }
+
     # Generate streaming response
     async def generate_response():
         """Generate and stream AI response using AgentRuntime."""
         try:
             run_state = await agent_runtime.run(
                 messages=llm_messages,
+                metadata=runtime_metadata,
                 config={"configurable": {"thread_id": str(conversation_id)}},
             )
 

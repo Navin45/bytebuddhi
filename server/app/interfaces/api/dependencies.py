@@ -329,14 +329,48 @@ def get_context_engine() -> Any:
     return ContextEngine()
 
 
+def get_sqlite_memory_store() -> Any:
+    """Get SqliteMemoryStore for local operational memory."""
+    from app.infrastructure.persistence.sqlite.sqlite_memory_store import SqliteMemoryStore
+
+    return SqliteMemoryStore(db_path="./storage/operational_memory.db")
+
+
+def get_postgres_memory_store(
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Get PostgresMemoryStore for durable memory."""
+    from app.infrastructure.persistence.postgres.repositories.postgres_memory_store import PostgresMemoryStore
+
+    return PostgresMemoryStore(db)
+
+
+async def get_memory_orchestrator(
+    working_store: Any = Depends(get_sqlite_memory_store),
+    durable_store: Any = Depends(get_postgres_memory_store),
+    artifact_store: Any = Depends(get_artifact_store),
+    embedding_provider: Any = Depends(get_embedding_provider),
+) -> Any:
+    """Get MemoryOrchestrator instance."""
+    from app.application.memory.orchestrator import MemoryOrchestrator
+
+    return MemoryOrchestrator(
+        working_store=working_store,
+        durable_store=durable_store,
+        artifact_store=artifact_store,
+        embedding_provider=embedding_provider,
+    )
+
+
 async def get_agent_runtime(
     db: AsyncSession = Depends(get_db),
     model_gateway: ModelGateway = Depends(get_model_gateway),
     workspace: Any = Depends(get_workspace),
     command_executor: Any = Depends(get_command_executor),
     tool_policy_engine: Any = Depends(get_tool_policy_engine),
+    memory_orchestrator: Any = Depends(get_memory_orchestrator),
 ) -> Any:
-    """Get AgentRuntime configured with Phase 1 & 2 capabilities and Postgres checkpoint saver."""
+    """Get AgentRuntime configured with Phase 1, 2, & 3 capabilities and Postgres checkpoint saver."""
     from app.application.agent.context import ContextEngine
     from app.application.agent.runtime import AgentRuntime
     from app.application.tools.builtin.command_tools import create_command_tool
@@ -366,4 +400,5 @@ async def get_agent_runtime(
         tool_executor=tool_executor,
         checkpointer=checkpointer,
         workspace=workspace,
+        memory_orchestrator=memory_orchestrator,
     )
