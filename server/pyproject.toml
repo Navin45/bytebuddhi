@@ -55,6 +55,7 @@ dependencies = [
     "aiofiles>=25.1.0",
     "tree-sitter-javascript>=0.25.0",
     "tree-sitter-typescript>=0.23.2",
+    "mcp>=2.2.0",
 ]
 
 [tool.ruff]

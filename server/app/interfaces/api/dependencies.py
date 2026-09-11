@@ -386,6 +386,40 @@ def get_code_intelligence_service(
     return CodeIntelligenceService(parser=parser, index=index)
 
 
+def get_credential_provider() -> Any:
+    """Get CredentialProvider instance."""
+    from app.infrastructure.connectors.credentials.env_credential_provider import EnvAndDictCredentialProvider
+
+    return EnvAndDictCredentialProvider()
+
+
+def get_external_http_client() -> Any:
+    """Get ExternalHttpClient instance."""
+    from app.infrastructure.http.external_client import ExternalHttpClient
+
+    return ExternalHttpClient()
+
+
+def get_github_connector(
+    credential_provider: Any = Depends(get_credential_provider),
+    http_client: Any = Depends(get_external_http_client),
+) -> Any:
+    """Get reference GitHubConnector instance."""
+    from app.infrastructure.connectors.github.github_connector import GitHubConnector
+
+    return GitHubConnector(
+        credential_provider=credential_provider,
+        client=http_client,
+    )
+
+
+def get_mcp_capability_manager() -> Any:
+    """Get MCPCapabilityManager instance."""
+    from app.infrastructure.mcp.client_manager import MCPCapabilityManager
+
+    return MCPCapabilityManager()
+
+
 async def get_agent_runtime(
     db: AsyncSession = Depends(get_db),
     model_gateway: ModelGateway = Depends(get_model_gateway),
@@ -394,8 +428,11 @@ async def get_agent_runtime(
     tool_policy_engine: Any = Depends(get_tool_policy_engine),
     memory_orchestrator: Any = Depends(get_memory_orchestrator),
     code_intelligence_service: Any = Depends(get_code_intelligence_service),
+    github_connector: Any = Depends(get_github_connector),
+    mcp_manager: Any = Depends(get_mcp_capability_manager),
+    artifact_store: Any = Depends(get_artifact_store),
 ) -> Any:
-    """Get AgentRuntime configured with Phase 1-4 capabilities and Postgres checkpoint saver."""
+    """Get AgentRuntime configured with Phase 1-5 capabilities and Postgres checkpoint saver."""
     from app.application.agent.context import ContextEngine
     from app.application.agent.runtime import AgentRuntime
     from app.application.tools.builtin.code_tools import create_code_tools
@@ -418,7 +455,17 @@ async def get_agent_runtime(
     for defn, handler in create_code_tools(code_intelligence_service, default_workspace=workspace):
         registry.register(defn, handler)
 
-    tool_executor = ToolExecutor(registry, policy_engine=tool_policy_engine)
+    # Register GitHub connector capabilities
+    github_connector.register_capabilities(registry)
+
+    # Wire registry into policy engine for risk & approval validation
+    tool_policy_engine.registry = registry
+
+    tool_executor = ToolExecutor(
+        registry,
+        policy_engine=tool_policy_engine,
+        artifact_store=artifact_store,
+    )
     context_engine = ContextEngine()
     checkpointer = PostgresCheckpointSaver(db)
 

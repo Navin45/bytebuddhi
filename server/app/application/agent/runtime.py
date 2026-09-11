@@ -172,6 +172,8 @@ def create_agent_loop_graph(
 
         ws = workspace or Workspace.create(root_path=".")
         run_id = state.get("run_id", "")
+        metadata_dict = state.get("metadata", {}) or {}
+        user_id = metadata_dict.get("user_id")
 
         # Execute tools safely with ToolExecutionContext
         results = []
@@ -180,6 +182,8 @@ def create_agent_loop_graph(
                 run_id=run_id,
                 tool_call_id=call.id,
                 workspace=ws,
+                user_id=user_id,
+                metadata=metadata_dict,
             )
             res = await tool_executor.execute(call, context=ctx)
             results.append(res)

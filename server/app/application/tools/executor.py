@@ -4,7 +4,9 @@ import asyncio
 import inspect
 import json
 from typing import Any
+from uuid import uuid4
 
+from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import ToolCall, ToolResult
 from app.application.tools.registry import ToolRegistry
@@ -20,9 +22,13 @@ class ToolExecutor:
         self,
         registry: ToolRegistry,
         policy_engine: Any | None = None,
+        artifact_store: ArtifactStore | None = None,
+        max_output_chars: int = 6000,
     ):
         self.registry = registry
         self.policy_engine = policy_engine
+        self.artifact_store = artifact_store
+        self.max_output_chars = max_output_chars
 
     async def execute(
         self,
@@ -38,6 +44,16 @@ class ToolExecutor:
         Returns:
             ToolResult containing execution output or error details.
         """
+        # Pre-execution cancellation check
+        if context is not None and context.is_cancelled:
+            logger.info("Tool execution cancelled before start", tool_name=tool_call.name, tool_call_id=tool_call.id)
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                name=tool_call.name,
+                content=f"Execution cancelled for tool '{tool_call.name}'",
+                is_error=True,
+                error_details={"error": "CancelledError", "reason": "Operation cancelled by caller"},
+            )
         tool_entry = self.registry.get(tool_call.name)
         if not tool_entry:
             logger.warning("Tool not found in registry", tool_name=tool_call.name)
@@ -102,6 +118,45 @@ class ToolExecutor:
                 content = "Success"
             else:
                 content = str(result_val)
+
+            # Post-execution cancellation check
+            if context is not None and context.is_cancelled:
+                logger.info(
+                    "Tool execution cancelled after completion",
+                    tool_name=tool_call.name,
+                    tool_call_id=tool_call.id,
+                )
+                return ToolResult(
+                    tool_call_id=tool_call.id,
+                    name=tool_call.name,
+                    content=f"Execution cancelled for tool '{tool_call.name}'",
+                    is_error=True,
+                    error_details={"error": "CancelledError", "reason": "Operation cancelled by caller"},
+                )
+
+            # Output bounding and large payload archiving
+            if len(content) > self.max_output_chars:
+                if self.artifact_store is not None:
+                    try:
+                        artifact_id = f"tool_out_{tool_call.id or uuid4().hex[:8]}"
+                        ref = await self.artifact_store.save_artifact(
+                            artifact_id=artifact_id,
+                            content=content,
+                            metadata={
+                                "tool_name": tool_call.name,
+                                "tool_call_id": tool_call.id,
+                                "run_id": context.run_id if context else None,
+                            },
+                        )
+                        content = (
+                            f"{content[:500]}\n\n"
+                            f"[Large output archived to artifact '{ref}'. Full size: {len(content)} characters]"
+                        )
+                    except Exception as ae:
+                        logger.warning("Failed to archive large tool output to ArtifactStore", error=str(ae))
+                        content = f"{content[: self.max_output_chars]}\n\n[Output truncated at {self.max_output_chars} characters]"
+                else:
+                    content = f"{content[: self.max_output_chars]}\n\n[Output truncated at {self.max_output_chars} characters]"
 
             return ToolResult(
                 tool_call_id=tool_call.id,
