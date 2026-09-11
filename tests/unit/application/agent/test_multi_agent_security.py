@@ -265,10 +265,9 @@ async def test_attack_e_recursive_spawning_and_depth_limits():
     res1 = await orchestrator.execute_task(
         task_non_delegate,
         parent_context=ToolExecutionContext.from_execution(
-            trusted_execution_context(run_id="p_depth_1", delegation_depth=1),
+            trusted_execution_context(run_id="p_depth_1", delegation_depth=1, agent_id="researcher"),
             tool_call_id="call_d1",
             workspace=ws,
-            metadata={"agent_id": "researcher"},
         ),
     )
     assert res1.status == TaskExecutionStatus.FAILED
@@ -279,14 +278,56 @@ async def test_attack_e_recursive_spawning_and_depth_limits():
     res2 = await orchestrator.execute_task(
         task_deep,
         parent_context=ToolExecutionContext.from_execution(
-            trusted_execution_context(run_id="p_depth_2", delegation_depth=2),
+            trusted_execution_context(run_id="p_depth_2", delegation_depth=2, agent_id="planner"),
             tool_call_id="call_d2",
             workspace=ws,
-            metadata={"agent_id": "planner"},
         ),
     )
     assert res2.status == TaskExecutionStatus.FAILED
     assert "Maximum delegation depth (2) exceeded" in res2.error
+
+
+@pytest.mark.asyncio
+async def test_metadata_cannot_impersonate_delegating_agent():
+    """Untrusted metadata agent_id/can_delegate must not grant delegation."""
+    registry = AgentRegistry()
+    registry.register(
+        AgentDefinition(
+            id="researcher",
+            name="Researcher",
+            description="r",
+            role=AgentRole.RESEARCHER,
+            system_prompt="p",
+            can_delegate=False,
+        )
+    )
+    registry.register(
+        AgentDefinition(
+            id="planner",
+            name="Planner",
+            description="p",
+            role=AgentRole.PLANNER,
+            system_prompt="p",
+            can_delegate=True,
+        )
+    )
+    orchestrator = MultiAgentOrchestrator(
+        agent_runtime=AsyncMock(),
+        agent_registry=registry,
+        config=MultiAgentConfig(max_delegation_depth=2),
+    )
+    ws = Workspace.create(root_path=".")
+    res = await orchestrator.execute_task(
+        AgentTask(task_id="t_sub", agent_id="researcher", description="subtask"),
+        parent_context=ToolExecutionContext.from_execution(
+            trusted_execution_context(run_id="p_impersonate", delegation_depth=1, agent_id="researcher"),
+            tool_call_id="call_imp",
+            workspace=ws,
+            metadata={"agent_id": "planner", "can_delegate": True, "role": "planner"},
+        ),
+    )
+    assert res.status == TaskExecutionStatus.FAILED
+    assert "does not have delegation permission" in res.error
 
 
 @pytest.mark.asyncio

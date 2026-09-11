@@ -9,23 +9,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from app.application.agent.runtime import AgentRuntime
 from app.application.agent.types import AgentStatus
 from app.application.ports.output.repository.conversation_repository import (
     ConversationRepository,
 )
 from app.application.ports.output.repository.message_repository import MessageRepository
-from app.application.workspace.resolution_service import WorkspaceResolutionService
+from app.application.use_cases.agent.execute_task import ExecuteTaskCommand, ExecuteTaskUseCase
 from app.domain.models.conversation import Conversation
-from app.domain.models.execution_context import ExecutionContext
-from app.domain.models.message import Message
 from app.domain.models.user import User
 from app.infrastructure.config.logger import get_logger
 from app.interfaces.api.dependencies import (
-    get_agent_runtime,
     get_conversation_repository,
+    get_execute_task_use_case,
     get_message_repository,
-    get_workspace_resolution_service,
 )
 from app.interfaces.api.middleware import get_current_user
 from app.interfaces.api.schemas.chat_schema import (
@@ -246,28 +242,12 @@ async def send_message(
     request: MessageCreateRequest,
     current_user: User = Depends(get_current_user),
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
-    message_repo: MessageRepository = Depends(get_message_repository),
-    agent_runtime: AgentRuntime = Depends(get_agent_runtime),
-    workspace_resolution: WorkspaceResolutionService = Depends(get_workspace_resolution_service),
+    execute_task: ExecuteTaskUseCase = Depends(get_execute_task_use_case),
 ):
     """Send a message in a conversation.
 
-    Sends a user message and generates an AI response via AgentRuntime. Returns streaming
-    response with Server-Sent Events.
-
-    Args:
-        conversation_id: Conversation ID
-        request: Message content
-        current_user: Authenticated user
-        conversation_repo: Conversation repository instance
-        message_repo: Message repository instance
-        agent_runtime: Agent runtime instance
-
-    Returns:
-        StreamingResponse: SSE stream of AI response
-
-    Raises:
-        HTTPException: If conversation not found or user doesn't own it
+    HTTP layer owns auth, conversation ownership, and SSE transport.
+    Agent execution is owned by ExecuteTaskUseCase.
     """
     conversation = await conversation_repo.get_by_id(conversation_id)
 
@@ -277,83 +257,40 @@ async def send_message(
             detail="Conversation not found",
         )
 
-    # Check ownership
     if conversation.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to send messages in this conversation",
         )
 
-    # Create user message
-    user_message = Message.create(
-        conversation_id=conversation_id,
-        role="user",
-        content=request.content,
-        parent_message_id=request.parent_message_id,
-    )
-    await message_repo.create(user_message)
-
-    # Get conversation history
-    history = await message_repo.get_by_conversation_id(conversation_id, limit=10)
-
-    # Build messages for LLM
-    llm_messages = [{"role": msg.role, "content": msg.content} for msg in history]
-
-    # Resolve authoritative workspace for the conversation's project and user
-    resolved_workspace = await workspace_resolution.resolve_workspace(
-        user_id=current_user.id,
-        project_id=conversation.project_id,
-    )
-
-    execution_context = ExecutionContext(
-        user_id=current_user.id,
-        project_id=conversation.project_id,
-        conversation_id=conversation_id,
-        run_id=str(conversation_id),
-        workspace_id=resolved_workspace.workspace_id,
-    )
-
-    # Generate streaming response
     async def generate_response():
-        """Generate and stream AI response using AgentRuntime."""
         try:
-            run_state = await agent_runtime.run(
-                messages=llm_messages,
-                workspace=resolved_workspace,
-                execution_context=execution_context,
-                config={"configurable": {"thread_id": str(conversation_id)}},
+            result = await execute_task.execute(
+                ExecuteTaskCommand(
+                    prompt=request.content,
+                    user_id=current_user.id,
+                    project_id=conversation.project_id,
+                    conversation_id=conversation_id,
+                    run_id=str(conversation_id),
+                    parent_message_id=request.parent_message_id,
+                )
             )
+            run_state = result.run_state
 
-            # Stream any tool calls made
             for tc in run_state.tool_calls:
                 yield SSEStreamHandler.format_sse(
                     {"type": "tool_call", "name": tc.name, "arguments": tc.arguments},
                     event="tool_call",
                 )
 
-            # Stream final response content
             if run_state.status == AgentStatus.COMPLETED:
                 content = run_state.final_response or ""
                 yield SSEStreamHandler.format_sse(
                     {"type": "content", "content": content},
                     event="content",
                 )
-
-                # Save assistant message
-                assistant_message = Message.create(
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=content,
-                    parent_message_id=user_message.id,
-                )
-                saved_message = await message_repo.create(assistant_message)
-
-                # Send done event with message ID
                 yield SSEStreamHandler.format_sse(
-                    {
-                        "type": "done",
-                        "message_id": str(saved_message.id),
-                    },
+                    {"type": "done", "message_id": str(result.conversation_id)},
                     event="done",
                 )
             else:

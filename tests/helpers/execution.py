@@ -13,6 +13,8 @@ def trusted_execution_context(
     parent_run_id: str | None = None,
     child_run_id: str | None = None,
     delegation_depth: int = 0,
+    agent_id: str | None = None,
+    approved_actions: tuple[str, ...] = (),
 ) -> ExecutionContext:
     return ExecutionContext(
         user_id=user_id,
@@ -23,4 +25,6 @@ def trusted_execution_context(
         parent_run_id=parent_run_id,
         child_run_id=child_run_id,
         delegation_depth=delegation_depth,
+        agent_id=agent_id,
+        approved_actions=approved_actions,
     )

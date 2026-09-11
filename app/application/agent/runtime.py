@@ -291,6 +291,7 @@ class AgentRuntime:
         self.memory_orchestrator = memory_orchestrator
         self.tracer = tracer or NoOpTracer()
         self.meter = meter or NoOpMeter()
+        self.orchestrator: object | None = None
 
         # Telemetry instruments
         self._runs_counter = self.meter.create_counter(MetricNames.AGENT_RUNS_TOTAL)

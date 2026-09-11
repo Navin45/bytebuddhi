@@ -13,8 +13,20 @@ IDENTITY_METADATA_KEYS = frozenset(
         "parent_run_id",
         "child_run_id",
         "delegation_depth",
+        "agent_id",
     }
 )
+
+AUTHORIZATION_METADATA_KEYS = frozenset(
+    {
+        "approval_granted",
+        "approved_actions",
+        "can_delegate",
+        "role",
+    }
+)
+
+STRIPPED_METADATA_KEYS = IDENTITY_METADATA_KEYS | AUTHORIZATION_METADATA_KEYS
 
 
 def _optional_id(value: UUID | str | None) -> str | None:
@@ -44,6 +56,8 @@ class ExecutionContext:
     parent_run_id: str | None = None
     child_run_id: str | None = None
     delegation_depth: int = 0
+    approved_actions: tuple[str, ...] = ()
+    agent_id: str | None = None
 
     @property
     def user_id_str(self) -> str:
@@ -57,15 +71,25 @@ class ExecutionContext:
     def conversation_id_str(self) -> str | None:
         return _optional_id(self.conversation_id)
 
+    @property
+    def artifact_scope_id(self) -> str:
+        """Namespace for execution-scoped artifacts. Never falls back to a global bucket."""
+        return self.project_id_str or f"user_{self.user_id_str}"
+
     def with_conversation_id(self, conversation_id: UUID | str | None) -> "ExecutionContext":
         """Return a copy with a server-assigned conversation id."""
         return replace(self, conversation_id=conversation_id)
 
-    def derive_child(self, child_run_id: str) -> "ExecutionContext":
+    def with_approvals(self, approved_actions: tuple[str, ...] | list[str]) -> "ExecutionContext":
+        """Return a copy with server-issued capability approvals. Never copied to children."""
+        return replace(self, approved_actions=tuple(approved_actions))
+
+    def derive_child(self, child_run_id: str, *, agent_id: str | None = None) -> "ExecutionContext":
         """Derive a child execution identity from this parent.
 
         Child runs receive a new run_id. Trusted caller identity is copied
         immutably and cannot be reconstructed from untrusted metadata.
+        Parent approvals are not inherited.
         """
         if not child_run_id.strip():
             raise ValueError("Child run identity must be non-empty")
@@ -80,4 +104,6 @@ class ExecutionContext:
             parent_run_id=self.run_id,
             child_run_id=child_run_id,
             delegation_depth=self.delegation_depth + 1,
+            approved_actions=(),
+            agent_id=agent_id,
         )

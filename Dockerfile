@@ -1,29 +1,20 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy requirements
-COPY requirements.txt requirements-dev.txt ./
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
-# Install Python dependencies
-RUN uv pip install --system -r requirements.txt
-
-# Copy application code
 COPY . .
+RUN uv sync --frozen --no-dev
 
-# Expose port
 EXPOSE 8000
 
-# Run migrations and start server
-CMD ["sh", "-c", "python scripts/migrate.py && uvicorn app.interfaces.api.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "uv run python scripts/migrate.py && uv run uvicorn app.interfaces.api.main:app --host 0.0.0.0 --port 8000"]

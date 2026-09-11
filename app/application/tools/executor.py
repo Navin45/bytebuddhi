@@ -190,7 +190,18 @@ class ToolExecutor:
                 if self.artifact_store is not None:
                     try:
                         artifact_id = f"tool_out_{tool_call.id or uuid4().hex[:8]}"
-                        project_id = context.project_id if context is not None else None
+                        if context is None or context.execution is None:
+                            return ToolResult(
+                                tool_call_id=tool_call.id,
+                                name=tool_call.name,
+                                content=(
+                                    "Execution-scoped artifacts require a trusted ExecutionContext; "
+                                    "refusing to archive into a global namespace"
+                                ),
+                                is_error=True,
+                                error_details={"error": "ExecutionContextRequired"},
+                            )
+                        project_id = context.artifact_scope_id
                         ref = await self.artifact_store.save_artifact(
                             artifact_id=artifact_id,
                             content=content,

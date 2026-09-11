@@ -1,6 +1,7 @@
 """Pure application use case for executing agent tasks decoupled from HTTP transport."""
 
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID, uuid4
 
 from app.application.agent.runtime import AgentRuntime
@@ -25,6 +26,11 @@ class ExecuteTaskCommand:
     project_id: UUID | str | None = None
     conversation_id: UUID | str | None = None
     run_id: str | None = None
+    parent_message_id: UUID | str | None = None
+    persist_messages: bool = True
+    approved_actions: tuple[str, ...] = ()
+    agent_id: str | None = None
+    history_limit: int = 10
 
 
 @dataclass
@@ -60,7 +66,6 @@ class ExecuteTaskUseCase:
         if command.project_id:
             project_uuid = UUID(str(command.project_id)) if isinstance(command.project_id, str) else command.project_id
 
-        # 1. Authoritative workspace resolution (enforces ownership and path boundaries)
         workspace = await self.workspace_resolution.resolve_workspace(
             user_id=user_uuid,
             project_id=project_uuid,
@@ -68,16 +73,16 @@ class ExecuteTaskUseCase:
 
         run_id = command.run_id or f"run_{uuid4().hex[:12]}"
 
-        # 2. Build trusted immutable ExecutionContext immediately after workspace resolution.
         execution_context = ExecutionContext(
             user_id=user_uuid,
             project_id=project_uuid,
             conversation_id=command.conversation_id,
             run_id=run_id,
             workspace_id=workspace.workspace_id,
+            approved_actions=tuple(command.approved_actions),
+            agent_id=command.agent_id,
         )
 
-        # 3. Resolve or create conversation if repositories provided
         conv_id = command.conversation_id
         if self.conversation_repo and conv_id is None:
             new_conv = Conversation.create(
@@ -91,17 +96,28 @@ class ExecuteTaskUseCase:
         if conv_id is not None and conv_id != execution_context.conversation_id:
             execution_context = execution_context.with_conversation_id(conv_id)
 
-        # 4. Save human message if message repo provided
+        messages: list[dict[str, Any]] = [{"role": "user", "content": command.prompt}]
         if self.message_repo and conv_id is not None:
             conv_uuid = UUID(str(conv_id)) if isinstance(conv_id, str) else conv_id
-            human_msg = Message.create(
-                conversation_id=conv_uuid,
-                role=MessageRole.USER,
-                content=command.prompt,
-            )
-            await self.message_repo.create(human_msg)
+            if command.persist_messages:
+                parent_id = None
+                if command.parent_message_id is not None:
+                    parent_id = (
+                        UUID(str(command.parent_message_id))
+                        if isinstance(command.parent_message_id, str)
+                        else command.parent_message_id
+                    )
+                human_msg = Message.create(
+                    conversation_id=conv_uuid,
+                    role=MessageRole.USER,
+                    content=command.prompt,
+                    parent_message_id=parent_id,
+                )
+                await self.message_repo.create(human_msg)
+            history = await self.message_repo.get_by_conversation_id(conv_uuid, limit=command.history_limit)
+            if history:
+                messages = [{"role": msg.role, "content": msg.content} for msg in history]
 
-        # 5. Invoke canonical AgentRuntime with the trusted context.
         logger.info(
             "Executing task via canonical runtime",
             run_id=run_id,
@@ -110,17 +126,18 @@ class ExecuteTaskUseCase:
             workspace_id=workspace.workspace_id,
         )
 
+        thread_id = str(conv_id) if conv_id is not None else run_id
         run_state = await self.agent_runtime.run(
-            messages=[{"role": "user", "content": command.prompt}],
+            messages=messages,
             workspace=workspace,
             run_id=run_id,
             execution_context=execution_context,
+            config={"configurable": {"thread_id": thread_id}},
         )
 
         response_text = run_state.final_response or ""
 
-        # 6. Save assistant message if message repo provided
-        if self.message_repo and conv_id is not None:
+        if command.persist_messages and self.message_repo and conv_id is not None:
             conv_uuid = UUID(str(conv_id)) if isinstance(conv_id, str) else conv_id
             ai_msg = Message.create(
                 conversation_id=conv_uuid,

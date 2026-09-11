@@ -10,6 +10,7 @@ from app.application.ports.output.execution.process_manager import (
 from app.application.ports.output.logger import get_logger
 from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.application.tools.context import ToolExecutionContext
+from app.domain.exceptions.execution_exceptions import ExecutionContextRequired
 from app.domain.exceptions.workspace_exceptions import CommandBlockedError
 from app.domain.models.environment_policy import EnvironmentPolicy
 from app.domain.models.workspace import Workspace
@@ -93,16 +94,20 @@ class CommandExecutor:
         )
 
         # 6. Archive large output streams into ArtifactStore
-        if self.artifact_store is not None:
+        if self.artifact_store is not None and (
+            result.stdout_preview or result.stdout_bytes > 0 or result.stderr_preview or result.stderr_bytes > 0
+        ):
+            if context is None or context.execution is None:
+                raise ExecutionContextRequired("Command output artifacts require a trusted ExecutionContext")
             try:
+                scope = context.artifact_scope_id
                 if result.stdout_preview or result.stdout_bytes > 0:
                     stdout_art_id = f"{result.execution_id}_stdout.log"
-                    # Note: LocalProcessManager provides stdout in result or stream
                     stdout_uri = await self.artifact_store.save_artifact(
                         artifact_id=stdout_art_id,
                         content=result.stdout_preview,
                         metadata={"execution_id": result.execution_id, "stream": "stdout"},
-                        project_id=context.project_id if context is not None else None,
+                        project_id=scope,
                     )
                     result.stdout_ref = stdout_uri
 
@@ -112,9 +117,11 @@ class CommandExecutor:
                         artifact_id=stderr_art_id,
                         content=result.stderr_preview,
                         metadata={"execution_id": result.execution_id, "stream": "stderr"},
-                        project_id=context.project_id if context is not None else None,
+                        project_id=scope,
                     )
                     result.stderr_ref = stderr_uri
+            except ExecutionContextRequired:
+                raise
             except Exception as ae:
                 logger.warning("Failed to archive execution streams to ArtifactStore", error=str(ae))
 

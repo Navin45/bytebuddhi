@@ -4,7 +4,7 @@ This module provides authentication endpoints including user registration,
 login, token refresh, current user information retrieval, and password management.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -12,6 +12,7 @@ from app.application.ports.output.repository.user_repository import UserReposito
 from app.domain.models.user import User
 from app.infrastructure.auth import jwt_handler, password_hasher
 from app.infrastructure.config.logger import get_logger
+from app.infrastructure.config.settings import settings
 from app.interfaces.api.dependencies import get_user_repository
 from app.interfaces.api.middleware import get_current_user
 from app.interfaces.api.schemas.auth_schema import (
@@ -253,16 +254,9 @@ async def request_password_reset(
 ):
     """Request a password reset token.
 
-    Generates a short-lived reset token for the given email.
-    Returns the token directly (in production this would be emailed).
-    Always responds successfully to prevent user enumeration.
-
-    Args:
-        request: Email address for reset
-        user_repo: User repository instance
-
-    Returns:
-        dict: Reset token (valid for 15 minutes)
+    Development and test environments return the token in the response for
+    automated testing. Production never returns the token; delivery must be
+    out-of-band. Always responds successfully to prevent user enumeration.
     """
     user = await user_repo.get_by_email(request.email)
 
@@ -274,15 +268,15 @@ async def request_password_reset(
     # Create a short-lived reset token using the existing JWT infrastructure
     reset_token = jwt_handler.create_access_token(
         user.id,
-        additional_claims={
-            "type": "password_reset",
-            "exp": datetime.utcnow() + timedelta(minutes=_PASSWORD_RESET_EXPIRE_MINUTES),
-        },
+        token_type="password_reset",
+        expires_delta=timedelta(minutes=_PASSWORD_RESET_EXPIRE_MINUTES),
     )
 
     logger.info("Password reset token issued", user_id=str(user.id))
 
-    # In production: send reset_token via email instead of returning it
+    if settings.is_production:
+        return {"message": "If that email is registered, a reset token has been issued."}
+
     return {
         "message": "Password reset token issued.",
         "reset_token": reset_token,

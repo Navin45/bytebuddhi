@@ -80,8 +80,17 @@ async def test_command_executor_archives_to_artifact_store(workspace: Workspace)
         artifact_store=mock_artifact_store,
     )
 
+    from app.application.tools.context import ToolExecutionContext
+    from tests.helpers.execution import trusted_execution_context
+
+    ctx = ToolExecutionContext.from_execution(
+        trusted_execution_context(workspace_id=workspace.workspace_id),
+        tool_call_id="cmd_archive",
+        workspace=workspace,
+    )
+
     cmd = [sys.executable, "-c", "print('stream to archive')"]
-    result = await executor.execute(command=cmd)
+    result = await executor.execute(command=cmd, context=ctx)
 
     assert result.exit_code == 0
     assert result.stdout_ref == "storage/artifacts/archived.log"

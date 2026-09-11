@@ -103,6 +103,18 @@ def test_registry_collision_handling():
     assert registry.get("echo")[0].id == "native.echo2"
 
 
+def test_registry_capability_id_collision_rejected() -> None:
+    """Two different tool names must not share a capability id."""
+    registry = ToolRegistry()
+    first = ToolDefinition(name="tool_a", description="A", id="shared.cap")
+    second = ToolDefinition(name="tool_b", description="B", id="shared.cap")
+    registry.register(first, lambda: "a")
+    with pytest.raises(ValueError, match="Capability id"):
+        registry.register(second, lambda: "b")
+    assert registry.get("tool_a") is not None
+    assert registry.get("tool_b") is None
+
+
 def test_registry_unregister():
     """Verify unregistering capability removes it from both name and id indices."""
     registry = ToolRegistry()

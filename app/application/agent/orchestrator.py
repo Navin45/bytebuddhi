@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import time
 from collections import defaultdict, deque
 from uuid import uuid4
 
@@ -62,8 +63,10 @@ class MultiAgentOrchestrator:
            the parent's registry and the agent definition's allowed_capabilities.
         4. Dependency DAG Validation: Tasks are validated for missing dependencies and cycles
            before any execution begins.
-        5. Failure & Cancellation Isolation: Dependent tasks are skipped upon dependency failure;
-           cancellation cascades to all active children; timeouts clean up resources.
+        5. Failure & Cancellation Isolation: Dependents of a failed task are skipped.
+           Independent tasks continue. Critical failure marks orchestration FAILED but
+           does not cancel in-flight independent siblings. Cancellation and global
+           timeout still stop remaining work. Reserved token budget always releases.
         6. Bounded Output: Large outputs are archived to ArtifactStore rather than ballooning context.
     """
 
@@ -225,7 +228,7 @@ class MultiAgentOrchestrator:
                 error=f"Maximum delegation depth ({self.config.max_delegation_depth}) exceeded",
             )
 
-        calling_agent_id = parent_meta.get("agent_id")
+        calling_agent_id = parent_execution.agent_id
         if calling_agent_id:
             calling_defn = self.agent_registry.get(str(calling_agent_id))
             if calling_defn and not calling_defn.can_delegate:
@@ -263,247 +266,263 @@ class MultiAgentOrchestrator:
                 error="Global token budget exhausted",
             )
 
-        # 7. Project context & build scoped tools
-        child_messages, child_metadata = self.context_projector.project_child_context(
-            task=task,
-            definition=definition,
-            child_run_id=child_run_id,
-            parent_execution=parent_execution,
-            parent_metadata=parent_meta,
-        )
-        scoped_registry, scoped_executor = self._get_scoped_tools(definition)
-
-        # 8. Execute within concurrency semaphore & timeout under child span
         consumed = 0
-        attempts = 0
-        max_attempts = 1 + (task.max_retries if not definition.is_mutating else 0)
+        budget_released = False
 
-        parent_span = self.tracer.get_current_span()
-        with self.tracer.start_as_current_span(
-            SpanNames.AGENT_CHILD_RUN,
-            parent=parent_span,
-            attributes={
-                SpanAttributes.TASK_ID: task.task_id,
-                SpanAttributes.AGENT_ID: definition.id,
-                SpanAttributes.AGENT_ROLE: definition.role.value,
-                SpanAttributes.PARENT_RUN_ID: parent_run_id,
-                SpanAttributes.CHILD_RUN_ID: child_run_id,
-                SpanAttributes.DELEGATION_DEPTH: parent_depth + 1,
-            },
-        ) as child_span:
-            child_corr_ctx = CorrelationContext(
-                trace_id=child_span.trace_id,
-                span_id=child_span.span_id,
-                parent_run_id=parent_run_id,
+        async def _release_reserved() -> None:
+            nonlocal budget_released
+            if not budget_released:
+                await self._release_budget(reserved_tokens, consumed)
+                budget_released = True
+
+        try:
+            # 7. Project context & build scoped tools
+            child_execution = parent_execution.derive_child(child_run_id, agent_id=definition.id)
+            child_messages, child_metadata = self.context_projector.project_child_context(
+                task=task,
+                definition=definition,
                 child_run_id=child_run_id,
-                agent_id=definition.id,
-                task_id=task.task_id,
-                user_id=child_execution.user_id_str,
-                project_id=child_execution.project_id_str or "",
-                conversation_id=child_execution.conversation_id_str or "",
+                parent_execution=parent_execution,
+                parent_metadata=parent_meta,
             )
-            with with_correlation_context(child_corr_ctx):
-                self._active_children_gauge.add(1, {"agent_role": definition.role.value})
-                try:
-                    while attempts < max_attempts:
-                        attempts += 1
-                        try:
-                            async with self._semaphore:
-                                # In-flight cancellation check
-                                if cancellation_token and cancellation_token.is_set():
-                                    await self._release_budget(reserved_tokens, consumed)
-                                    self._child_cancellations_counter.add(1, {"agent_role": definition.role.value})
-                                    child_span.set_attribute(
-                                        SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.CANCELLED.value
+            scoped_registry, scoped_executor = self._get_scoped_tools(definition)
+
+            # 8. Execute within concurrency semaphore & timeout under child span
+            attempts = 0
+            max_attempts = 1 + (task.max_retries if not definition.is_mutating else 0)
+
+            parent_span = self.tracer.get_current_span()
+            with self.tracer.start_as_current_span(
+                SpanNames.AGENT_CHILD_RUN,
+                parent=parent_span,
+                attributes={
+                    SpanAttributes.TASK_ID: task.task_id,
+                    SpanAttributes.AGENT_ID: definition.id,
+                    SpanAttributes.AGENT_ROLE: definition.role.value,
+                    SpanAttributes.PARENT_RUN_ID: parent_run_id,
+                    SpanAttributes.CHILD_RUN_ID: child_run_id,
+                    SpanAttributes.DELEGATION_DEPTH: parent_depth + 1,
+                },
+            ) as child_span:
+                child_corr_ctx = CorrelationContext(
+                    trace_id=child_span.trace_id,
+                    span_id=child_span.span_id,
+                    parent_run_id=parent_run_id,
+                    child_run_id=child_run_id,
+                    agent_id=definition.id,
+                    task_id=task.task_id,
+                    user_id=child_execution.user_id_str,
+                    project_id=child_execution.project_id_str or "",
+                    conversation_id=child_execution.conversation_id_str or "",
+                )
+                with with_correlation_context(child_corr_ctx):
+                    self._active_children_gauge.add(1, {"agent_role": definition.role.value})
+                    try:
+                        while attempts < max_attempts:
+                            attempts += 1
+                            try:
+                                async with self._semaphore:
+                                    # In-flight cancellation check
+                                    if cancellation_token and cancellation_token.is_set():
+                                        await _release_reserved()
+                                        self._child_cancellations_counter.add(1, {"agent_role": definition.role.value})
+                                        child_span.set_attribute(
+                                            SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.CANCELLED.value
+                                        )
+                                        child_span.set_status(
+                                            SpanStatus.ERROR, description="Execution cancelled by parent"
+                                        )
+                                        return AgentResult(
+                                            task_id=task.task_id,
+                                            child_run_id=child_run_id,
+                                            parent_run_id=parent_run_id,
+                                            agent_id=task.agent_id,
+                                            status=TaskExecutionStatus.CANCELLED,
+                                            error="Execution cancelled by parent",
+                                        )
+
+                                    logger.info(
+                                        "Starting child agent task",
+                                        lifecycle_event=AgentLifecycleEvent.AGENT_STARTED.value,
+                                        task_id=task.task_id,
+                                        agent_id=definition.id,
+                                        child_run_id=child_run_id,
+                                        parent_run_id=parent_run_id,
                                     )
-                                    child_span.set_status(SpanStatus.ERROR, description="Execution cancelled by parent")
+
+                                    run_coro = self.agent_runtime.run(
+                                        messages=child_messages,
+                                        system_prompt=definition.system_prompt,
+                                        run_id=child_run_id,
+                                        metadata=child_metadata,
+                                        execution_context=child_execution,
+                                        tool_registry=scoped_registry,
+                                        tool_executor=scoped_executor,
+                                        max_iterations=definition.max_iterations,
+                                    )
+
+                                    run_state = await asyncio.wait_for(run_coro, timeout=task.timeout_seconds)
+
+                                # Process answer and bounding
+                                raw_answer = run_state.final_response or ""
+                                artifacts: list[str] = []
+
+                                if len(raw_answer) > self.config.max_answer_chars:
+                                    if self.artifact_store:
+                                        art_id = f"artifact_{child_run_id}_{task.task_id}"
+                                        ref = await self.artifact_store.save_artifact(
+                                            artifact_id=art_id,
+                                            content=raw_answer,
+                                            metadata={"agent_id": definition.id, "task_id": task.task_id},
+                                            project_id=child_execution.artifact_scope_id,
+                                        )
+                                        artifacts.append(ref)
+                                        answer = (
+                                            f"{raw_answer[:1000]}...\n\n"
+                                            f"[Full output archived to artifact '{ref}'. Total length: {len(raw_answer)} chars]"
+                                        )
+                                    else:
+                                        answer = f"{raw_answer[: self.config.max_answer_chars]}... [truncated]"
+                                else:
+                                    answer = raw_answer
+
+                                # Calculate tool usage counts
+                                tool_counts: dict[str, int] = defaultdict(int)
+                                for tc in run_state.tool_calls:
+                                    tool_counts[tc.name] += 1
+
+                                # Approximate token usage based on turns
+                                consumed = (len(str(child_messages)) + len(raw_answer)) // 4
+                                await _release_reserved()
+
+                                status = (
+                                    TaskExecutionStatus.SUCCESS
+                                    if run_state.status == AgentStatus.COMPLETED
+                                    else TaskExecutionStatus.FAILED
+                                )
+
+                                summary = (
+                                    answer[: self.config.max_summary_chars]
+                                    if len(answer) > self.config.max_summary_chars
+                                    else answer
+                                )
+
+                                result = AgentResult(
+                                    task_id=task.task_id,
+                                    child_run_id=child_run_id,
+                                    parent_run_id=parent_run_id,
+                                    agent_id=definition.id,
+                                    status=status,
+                                    summary=summary,
+                                    answer=answer,
+                                    artifacts=artifacts,
+                                    tool_usage=dict(tool_counts),
+                                    token_usage=TokenUsage(total_tokens=consumed),
+                                    error=run_state.error.message if run_state.error else None,
+                                )
+
+                                child_span.set_attribute(SpanAttributes.EXECUTION_STATUS, status.value)
+                                if status == TaskExecutionStatus.SUCCESS:
+                                    self._child_runs_counter.add(
+                                        1, {"agent_role": definition.role.value, "execution_status": "success"}
+                                    )
+                                    child_span.set_status(SpanStatus.OK)
+                                else:
+                                    self._child_failures_counter.add(1, {"agent_role": definition.role.value})
+                                    child_span.set_status(
+                                        SpanStatus.ERROR, description=str(result.error or "Child failed")
+                                    )
+
+                                logger.info(
+                                    "Child agent task finished",
+                                    lifecycle_event=AgentLifecycleEvent.AGENT_COMPLETED.value,
+                                    task_id=task.task_id,
+                                    status=status.value,
+                                )
+                                return result
+
+                            except TimeoutError:
+                                logger.warning(
+                                    "Child task timed out",
+                                    lifecycle_event=AgentLifecycleEvent.AGENT_TIMEOUT.value,
+                                    task_id=task.task_id,
+                                    timeout=task.timeout_seconds,
+                                )
+                                if attempts >= max_attempts:
+                                    await _release_reserved()
+                                    self._child_timeouts_counter.add(1, {"agent_role": definition.role.value})
+                                    child_span.set_attribute(
+                                        SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.TIMEOUT.value
+                                    )
+                                    child_span.set_status(
+                                        SpanStatus.ERROR, description=f"Task timed out after {task.timeout_seconds}s"
+                                    )
                                     return AgentResult(
                                         task_id=task.task_id,
                                         child_run_id=child_run_id,
                                         parent_run_id=parent_run_id,
                                         agent_id=task.agent_id,
-                                        status=TaskExecutionStatus.CANCELLED,
-                                        error="Execution cancelled by parent",
+                                        status=TaskExecutionStatus.TIMEOUT,
+                                        error=f"Task timed out after {task.timeout_seconds}s",
                                     )
-
+                            except asyncio.CancelledError:
                                 logger.info(
-                                    "Starting child agent task",
-                                    lifecycle_event=AgentLifecycleEvent.AGENT_STARTED.value,
+                                    "Child task cancelled",
+                                    lifecycle_event=AgentLifecycleEvent.AGENT_CANCELLED.value,
                                     task_id=task.task_id,
-                                    agent_id=definition.id,
-                                    child_run_id=child_run_id,
-                                    parent_run_id=parent_run_id,
                                 )
-
-                                run_coro = self.agent_runtime.run(
-                                    messages=child_messages,
-                                    system_prompt=definition.system_prompt,
-                                    run_id=child_run_id,
-                                    metadata=child_metadata,
-                                    execution_context=child_execution,
-                                    tool_registry=scoped_registry,
-                                    tool_executor=scoped_executor,
-                                    max_iterations=definition.max_iterations,
-                                )
-
-                                run_state = await asyncio.wait_for(run_coro, timeout=task.timeout_seconds)
-
-                            # Process answer and bounding
-                            raw_answer = run_state.final_response or ""
-                            artifacts: list[str] = []
-
-                            if len(raw_answer) > self.config.max_answer_chars:
-                                if self.artifact_store:
-                                    art_id = f"artifact_{child_run_id}_{task.task_id}"
-                                    ref = await self.artifact_store.save_artifact(
-                                        artifact_id=art_id,
-                                        content=raw_answer,
-                                        metadata={"agent_id": definition.id, "task_id": task.task_id},
-                                        project_id=child_execution.project_id_str,
-                                    )
-                                    artifacts.append(ref)
-                                    answer = (
-                                        f"{raw_answer[:1000]}...\n\n"
-                                        f"[Full output archived to artifact '{ref}'. Total length: {len(raw_answer)} chars]"
-                                    )
-                                else:
-                                    answer = f"{raw_answer[: self.config.max_answer_chars]}... [truncated]"
-                            else:
-                                answer = raw_answer
-
-                            # Calculate tool usage counts
-                            tool_counts: dict[str, int] = defaultdict(int)
-                            for tc in run_state.tool_calls:
-                                tool_counts[tc.name] += 1
-
-                            # Approximate token usage based on turns
-                            consumed = (len(str(child_messages)) + len(raw_answer)) // 4
-                            await self._release_budget(reserved_tokens, consumed)
-
-                            status = (
-                                TaskExecutionStatus.SUCCESS
-                                if run_state.status == AgentStatus.COMPLETED
-                                else TaskExecutionStatus.FAILED
-                            )
-
-                            summary = (
-                                answer[: self.config.max_summary_chars]
-                                if len(answer) > self.config.max_summary_chars
-                                else answer
-                            )
-
-                            result = AgentResult(
-                                task_id=task.task_id,
-                                child_run_id=child_run_id,
-                                parent_run_id=parent_run_id,
-                                agent_id=definition.id,
-                                status=status,
-                                summary=summary,
-                                answer=answer,
-                                artifacts=artifacts,
-                                tool_usage=dict(tool_counts),
-                                token_usage=TokenUsage(total_tokens=consumed),
-                                error=run_state.error.message if run_state.error else None,
-                            )
-
-                            child_span.set_attribute(SpanAttributes.EXECUTION_STATUS, status.value)
-                            if status == TaskExecutionStatus.SUCCESS:
-                                self._child_runs_counter.add(
-                                    1, {"agent_role": definition.role.value, "execution_status": "success"}
-                                )
-                                child_span.set_status(SpanStatus.OK)
-                            else:
-                                self._child_failures_counter.add(1, {"agent_role": definition.role.value})
-                                child_span.set_status(SpanStatus.ERROR, description=str(result.error or "Child failed"))
-
-                            logger.info(
-                                "Child agent task finished",
-                                lifecycle_event=AgentLifecycleEvent.AGENT_COMPLETED.value,
-                                task_id=task.task_id,
-                                status=status.value,
-                            )
-                            return result
-
-                        except TimeoutError:
-                            logger.warning(
-                                "Child task timed out",
-                                lifecycle_event=AgentLifecycleEvent.AGENT_TIMEOUT.value,
-                                task_id=task.task_id,
-                                timeout=task.timeout_seconds,
-                            )
-                            if attempts >= max_attempts:
-                                await self._release_budget(reserved_tokens, consumed)
-                                self._child_timeouts_counter.add(1, {"agent_role": definition.role.value})
+                                await _release_reserved()
+                                self._child_cancellations_counter.add(1, {"agent_role": definition.role.value})
                                 child_span.set_attribute(
-                                    SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.TIMEOUT.value
+                                    SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.CANCELLED.value
                                 )
-                                child_span.set_status(
-                                    SpanStatus.ERROR, description=f"Task timed out after {task.timeout_seconds}s"
-                                )
+                                child_span.set_status(SpanStatus.ERROR, description="Task cancelled by caller")
                                 return AgentResult(
                                     task_id=task.task_id,
                                     child_run_id=child_run_id,
                                     parent_run_id=parent_run_id,
                                     agent_id=task.agent_id,
-                                    status=TaskExecutionStatus.TIMEOUT,
-                                    error=f"Task timed out after {task.timeout_seconds}s",
+                                    status=TaskExecutionStatus.CANCELLED,
+                                    error="Task cancelled by caller",
                                 )
-                        except asyncio.CancelledError:
-                            logger.info(
-                                "Child task cancelled",
-                                lifecycle_event=AgentLifecycleEvent.AGENT_CANCELLED.value,
-                                task_id=task.task_id,
-                            )
-                            await self._release_budget(reserved_tokens, consumed)
-                            self._child_cancellations_counter.add(1, {"agent_role": definition.role.value})
-                            child_span.set_attribute(
-                                SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.CANCELLED.value
-                            )
-                            child_span.set_status(SpanStatus.ERROR, description="Task cancelled by caller")
-                            return AgentResult(
-                                task_id=task.task_id,
-                                child_run_id=child_run_id,
-                                parent_run_id=parent_run_id,
-                                agent_id=task.agent_id,
-                                status=TaskExecutionStatus.CANCELLED,
-                                error="Task cancelled by caller",
-                            )
-                        except Exception as e:
-                            logger.error(
-                                "Child task unexpected error",
-                                lifecycle_event=AgentLifecycleEvent.AGENT_FAILED.value,
-                                task_id=task.task_id,
-                                error=str(e),
-                            )
-                            if attempts >= max_attempts:
-                                await self._release_budget(reserved_tokens, consumed)
-                                self._child_failures_counter.add(1, {"agent_role": definition.role.value})
-                                child_span.set_attribute(
-                                    SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.FAILED.value
-                                )
-                                child_span.set_status(SpanStatus.ERROR, description=str(e))
-                                return AgentResult(
+                            except Exception as e:
+                                logger.error(
+                                    "Child task unexpected error",
+                                    lifecycle_event=AgentLifecycleEvent.AGENT_FAILED.value,
                                     task_id=task.task_id,
-                                    child_run_id=child_run_id,
-                                    parent_run_id=parent_run_id,
-                                    agent_id=task.agent_id,
-                                    status=TaskExecutionStatus.FAILED,
                                     error=str(e),
                                 )
+                                if attempts >= max_attempts:
+                                    await _release_reserved()
+                                    self._child_failures_counter.add(1, {"agent_role": definition.role.value})
+                                    child_span.set_attribute(
+                                        SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.FAILED.value
+                                    )
+                                    child_span.set_status(SpanStatus.ERROR, description=str(e))
+                                    return AgentResult(
+                                        task_id=task.task_id,
+                                        child_run_id=child_run_id,
+                                        parent_run_id=parent_run_id,
+                                        agent_id=task.agent_id,
+                                        status=TaskExecutionStatus.FAILED,
+                                        error=str(e),
+                                    )
 
-                    await self._release_budget(reserved_tokens, consumed)
-                    child_span.set_attribute(SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.FAILED.value)
-                    child_span.set_status(SpanStatus.ERROR, description="Maximum execution retries exhausted")
-                    return AgentResult(
-                        task_id=task.task_id,
-                        child_run_id=child_run_id,
-                        parent_run_id=parent_run_id,
-                        agent_id=task.agent_id,
-                        status=TaskExecutionStatus.FAILED,
-                        error="Maximum execution retries exhausted",
-                    )
-                finally:
-                    self._active_children_gauge.add(-1, {"agent_role": definition.role.value})
+                        await _release_reserved()
+                        child_span.set_attribute(SpanAttributes.EXECUTION_STATUS, TaskExecutionStatus.FAILED.value)
+                        child_span.set_status(SpanStatus.ERROR, description="Maximum execution retries exhausted")
+                        return AgentResult(
+                            task_id=task.task_id,
+                            child_run_id=child_run_id,
+                            parent_run_id=parent_run_id,
+                            agent_id=task.agent_id,
+                            status=TaskExecutionStatus.FAILED,
+                            error="Maximum execution retries exhausted",
+                        )
+                    finally:
+                        self._active_children_gauge.add(-1, {"agent_role": definition.role.value})
+        finally:
+            await _release_reserved()
 
     def validate_dependency_graph(self, tasks: list[AgentTask]) -> list[str]:
         """Validate the task dependency graph for cycles, self-dependencies, and missing dependencies.
@@ -594,9 +613,35 @@ class MultiAgentOrchestrator:
             running_tasks: dict[str, asyncio.Task[AgentResult]] = {}
             total_tokens = TokenUsage()
             aborted = False
+            deadline = time.monotonic() + self.config.max_orchestration_time
 
             try:
                 while len(results) < len(tasks):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        logger.warning(
+                            "Orchestration exceeded max_orchestration_time",
+                            orchestration_id=orchestration_id,
+                            limit=self.config.max_orchestration_time,
+                        )
+                        for tid, t in tasks_by_id.items():
+                            if tid not in results:
+                                results[tid] = AgentResult(
+                                    task_id=tid,
+                                    child_run_id="",
+                                    parent_run_id=parent_run_id,
+                                    agent_id=t.agent_id,
+                                    status=TaskExecutionStatus.TIMEOUT,
+                                    error=(
+                                        f"Orchestration exceeded max_orchestration_time "
+                                        f"({self.config.max_orchestration_time}s)"
+                                    ),
+                                )
+                        for handle in running_tasks.values():
+                            if not handle.done():
+                                handle.cancel()
+                        break
+
                     # Check overall cancellation
                     if cancellation_token and cancellation_token.is_set():
                         logger.info(
@@ -637,7 +682,7 @@ class MultiAgentOrchestrator:
                             reason = (
                                 f"Skipped due to failed/cancelled dependency '{failing_dep_name}'"
                                 if dep_failed
-                                else "Skipped due to prior critical task failure"
+                                else "Skipped due to orchestration abort"
                             )
                             results[tid] = AgentResult(
                                 task_id=tid,
@@ -665,7 +710,10 @@ class MultiAgentOrchestrator:
                     done, _ = await asyncio.wait(
                         running_tasks.values(),
                         return_when=asyncio.FIRST_COMPLETED,
+                        timeout=max(0.01, remaining),
                     )
+                    if not done:
+                        continue
 
                     for done_task in done:
                         completed_tid = next(tid for tid, handle in running_tasks.items() if handle == done_task)
@@ -677,7 +725,7 @@ class MultiAgentOrchestrator:
 
                             if res.status != TaskExecutionStatus.SUCCESS and tasks_by_id[completed_tid].is_critical:
                                 logger.warning(
-                                    "Critical child task failed, triggering dependent skip",
+                                    "Critical child task failed; dependents will skip, independent tasks continue",
                                     task_id=completed_tid,
                                     status=res.status.value,
                                 )

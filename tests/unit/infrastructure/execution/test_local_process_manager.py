@@ -200,3 +200,31 @@ async def test_descendant_process_tree_cleanup(
                 return False
 
     assert not is_pid_alive(child_pid), f"Child process {child_pid} was not cleaned up!"
+
+
+@pytest.mark.asyncio
+async def test_event_queue_bounded_under_output_flood(
+    process_manager: LocalProcessManager, tmp_path: Path, default_env: dict[str, str]
+) -> None:
+    """More output events than queue capacity must not prevent process termination."""
+    cmd = [
+        sys.executable,
+        "-c",
+        "import sys,time\n"
+        "for i in range(40):\n"
+        "    sys.stdout.write(f'line-{i}\\n')\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(0.02)\n",
+    ]
+    handle = await process_manager.start(
+        command=cmd,
+        cwd=tmp_path,
+        env=default_env,
+        max_event_queue=4,
+    )
+    await asyncio.sleep(1.0)
+    result = await handle.wait()
+    assert result.exit_code == 0
+    assert result.status == ProcessStatus.COMPLETED
+    assert handle._event_queue.maxsize == 4
+    assert handle._events_dropped > 0 or result.is_truncated

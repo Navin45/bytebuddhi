@@ -3,8 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
-from langchain_core.messages import BaseMessage
-
 from app.application.agent.errors import AgentError, AgentErrorCode
 from app.application.agent.types import AgentStatus
 from app.application.tools.definition import ToolCall, ToolResult
@@ -117,50 +115,3 @@ class AgentRunState:
             metadata=state.get("metadata", {}),
             token_usage=usage,
         )
-
-
-# =====================================================================
-# Legacy state definitions preserved for backward compatibility
-# =====================================================================
-
-
-class AgentState(TypedDict):
-    """Legacy state for the ByteBuddhi workflow graph."""
-
-    messages: list[BaseMessage]
-    user_query: str
-    intent: str | None
-    project_id: str | None
-    retrieved_context: list[dict[str, Any]]
-    search_results: dict[str, Any] | None
-    generated_code: str | None
-    explanation: str | None
-    error: str | None
-    metadata: dict[str, Any]
-
-
-class IntentType:
-    """Legacy user intent classifications."""
-
-    CODE_GENERATION = "code_generation"
-    CODE_EXPLANATION = "code_explanation"
-    DEBUGGING = "debugging"
-    REFACTORING = "refactoring"
-    DOCUMENTATION = "documentation"
-    GENERAL_CHAT = "general_chat"
-    WEB_SEARCH = "web_search"
-    CODE_DEBUG = "debugging"
-    CODE_REFACTOR = "refactoring"
-
-    @classmethod
-    def all_intents(cls) -> set[str]:
-        """Return all valid intent type values."""
-        return {
-            cls.CODE_GENERATION,
-            cls.CODE_EXPLANATION,
-            cls.DEBUGGING,
-            cls.REFACTORING,
-            cls.DOCUMENTATION,
-            cls.GENERAL_CHAT,
-            cls.WEB_SEARCH,
-        }

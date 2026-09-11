@@ -5,7 +5,7 @@ authentication. It supports both access tokens (short-lived) and
 refresh tokens (long-lived).
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +15,8 @@ from app.infrastructure.config.logger import get_logger
 from app.infrastructure.config.settings import settings
 
 logger = get_logger(__name__)
+
+PROTECTED_TOKEN_CLAIMS = frozenset({"exp", "type", "sub", "iat", "nbf"})
 
 
 class JWTHandler:
@@ -51,30 +53,28 @@ class JWTHandler:
         self.access_token_expire_minutes = access_token_expire_minutes or settings.access_token_expire_minutes
         self.refresh_token_expire_days = refresh_token_expire_days or settings.refresh_token_expire_days
 
-    def create_access_token(self, user_id: UUID, additional_claims: dict | None = None) -> str:
+    def create_access_token(
+        self,
+        user_id: UUID,
+        additional_claims: dict[str, Any] | None = None,
+        *,
+        token_type: str = "access",
+        expires_delta: timedelta | None = None,
+    ) -> str:
         """Create an access token for a user.
 
-        Access tokens are short-lived and used for API authentication.
-        They contain the user ID and expiration time.
-
-        Args:
-            user_id: User ID to encode in token
-            additional_claims: Optional additional claims to include
-
-        Returns:
-            str: Encoded JWT access token
+        Protected claims (exp, type, sub, iat, nbf) are owned by this constructor
+        and cannot be overwritten by additional_claims.
         """
-        expire = datetime.utcnow() + timedelta(minutes=self.access_token_expire_minutes)
-
-        to_encode = {
+        expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=self.access_token_expire_minutes))
+        extras = {k: v for k, v in (additional_claims or {}).items() if k not in PROTECTED_TOKEN_CLAIMS}
+        to_encode: dict[str, Any] = {
+            **extras,
             "sub": str(user_id),
             "exp": expire,
-            "type": "access",
+            "type": token_type,
+            "iat": datetime.now(UTC),
         }
-
-        if additional_claims:
-            to_encode.update(additional_claims)
-
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
         return str(encoded_jwt)
 
@@ -90,12 +90,13 @@ class JWTHandler:
         Returns:
             str: Encoded JWT refresh token
         """
-        expire = datetime.utcnow() + timedelta(days=self.refresh_token_expire_days)
+        expire = datetime.now(UTC) + timedelta(days=self.refresh_token_expire_days)
 
         to_encode = {
             "sub": str(user_id),
             "exp": expire,
             "type": "refresh",
+            "iat": datetime.now(UTC),
         }
 
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)

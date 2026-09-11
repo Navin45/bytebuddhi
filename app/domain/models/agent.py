@@ -104,7 +104,14 @@ class AgentDefinition:
 
 @dataclass
 class AgentTask:
-    """Work assigned to an individual child agent."""
+    """Work assigned to an individual child agent.
+
+    ``is_critical`` semantics (explicit, non-cancellable-sibling model):
+        - A non-SUCCESS critical task makes the overall orchestration FAILED.
+        - Dependents of any failed or cancelled task are SKIPPED.
+        - Independent tasks continue to completion.
+        - Critical failure does not cancel in-flight independent siblings.
+    """
 
     task_id: str
     agent_id: str

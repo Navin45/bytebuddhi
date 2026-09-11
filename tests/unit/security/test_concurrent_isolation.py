@@ -75,3 +75,38 @@ async def test_concurrent_project_workspace_and_artifact_isolation(tmp_path: Pat
     # Cross-project artifact leakage must fail
     assert await artifact_store.get_artifact("summary.txt", project_id=str(proj_a_id)) == "Project A summary"
     assert await artifact_store.get_artifact("summary.txt", project_id=str(proj_b_id)) == "Project B summary"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_three_project_isolation(tmp_path: Path) -> None:
+    mock_repo = AsyncMock()
+    users = [uuid4(), uuid4(), uuid4()]
+    project_ids = [uuid4(), uuid4(), uuid4()]
+    projects = [
+        Project.create(user_id=users[i], name=f"proj_{i}", local_path=str(tmp_path / f"p{i}")) for i in range(3)
+    ]
+    id_map = dict(zip(project_ids, projects, strict=True))
+    mock_repo.get_by_id.side_effect = lambda pid: id_map[pid]
+    ws_service = WorkspaceResolutionService(
+        project_repo=mock_repo,
+        base_storage_dir=str(tmp_path / "workspaces"),
+    )
+    artifact_store = LocalArtifactStore(base_dir=tmp_path / "artifacts")
+
+    async def run_one(index: int) -> str:
+        ws = await ws_service.resolve_workspace(user_id=users[index], project_id=project_ids[index])
+        marker = f"payload-{index}"
+        ws.resolve_path("data.txt").write_text(marker, encoding="utf-8")
+        await artifact_store.save_artifact("summary.txt", marker, project_id=str(project_ids[index]))
+        return marker
+
+    results = await asyncio.gather(run_one(0), run_one(1), run_one(2))
+    assert results == ["payload-0", "payload-1", "payload-2"]
+    for i in range(3):
+        assert await artifact_store.get_artifact("summary.txt", project_id=str(project_ids[i])) == f"payload-{i}"
+        for j in range(3):
+            if i == j:
+                continue
+            assert await artifact_store.get_artifact("summary.txt", project_id=str(project_ids[i])) != (
+                await artifact_store.get_artifact("summary.txt", project_id=str(project_ids[j]))
+            )

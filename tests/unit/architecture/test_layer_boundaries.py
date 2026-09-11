@@ -55,3 +55,18 @@ def test_application_layer_purity() -> None:
                 violations.append(f"{py_file.name} imports web framework: {imp}")
 
     assert not violations, "Application boundary violations detected:\n" + "\n".join(violations)
+
+
+def test_api_routes_do_not_own_runtime_execution() -> None:
+    """HTTP routes may depend on ExecuteTaskUseCase, not AgentRuntime or MultiAgentOrchestrator."""
+    routes_dir = Path("app/interfaces/api/routes").resolve()
+    violations = []
+    for py_file in routes_dir.rglob("*.py"):
+        imports = _get_imports(py_file)
+        for imp in imports:
+            if imp in {
+                "app.application.agent.runtime",
+                "app.application.agent.orchestrator",
+            }:
+                violations.append(f"{py_file.name} imports {imp}")
+    assert not violations, "API runtime-ownership violations:\n" + "\n".join(violations)

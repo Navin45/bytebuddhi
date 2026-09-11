@@ -1,9 +1,31 @@
 """Dependency injection for API routes.
 
-This module provides dependency functions for FastAPI routes,
-including database sessions, repository instances, and service instances.
-These dependencies follow the dependency injection pattern to decouple
-route handlers from concrete implementations.
+Composition-root lifetime model (FastAPI caches each Depends() result per request
+unless noted). Do not share user/project/workspace/run identity across requests.
+
+| Dependency | Lifetime | Statefulness | Concurrency | Cleanup |
+|---|---|---|---|---|
+| DB session | request | connection | one session per request | session close |
+| Repositories | request | wrap session | not shared | with session |
+| Settings | application | immutable config | safe | n/a |
+| Tracer/Meter | application | SDK providers | safe | process shutdown |
+| ArtifactStore | request instance, shared FS root | filesystem | project namespaces | n/a |
+| ProcessManager | request | in-flight processes | isolate per execution | cancel/wait |
+| ExternalHttpClient | request | httpx client | do not store user creds | close with request GC |
+| CredentialProvider | request | env/dict | project-scoped secrets | n/a |
+| MCP manager | request | server clients | per-request | close with request GC |
+| ToolRegistry | request (built with runtime) | mutable index | not shared across users | n/a |
+| ToolPolicyEngine | request | registry pointer | not shared | n/a |
+| AgentRuntime | request | run loop + checkpointer | not shared | n/a |
+| MultiAgentOrchestrator | request, attached to that runtime | budget counters | not shared across users | n/a |
+| CodeIndex | request, ephemeral empty index | in-memory | not persistent, not cross-project | discarded |
+| CodeParser | request | Tree-sitter | safe to recreate | n/a |
+| Web research resources | application (lifecycle.py) | http/browser | bounded | API shutdown |
+| WorkspaceResolutionService | request | mode/root from settings | no user identity stored | n/a |
+| ExecuteTaskUseCase | request | none beyond deps | n/a | n/a |
+
+User identity, project identity, workspace, and approvals are never taken from this
+module; ExecuteTaskUseCase builds ExecutionContext after authorization.
 """
 
 from collections.abc import AsyncGenerator
@@ -250,7 +272,12 @@ def get_model_gateway() -> ModelGateway:
 
 
 def get_workspace() -> Any:
-    """Get active Workspace instance."""
+    """Placeholder workspace for composition of command/code tools before a run.
+
+    Request-scoped. Not an authorization boundary. ExecuteTaskUseCase resolves the
+    authoritative project workspace; AgentRuntime.run receives that Workspace.
+    Handlers must use ToolExecutionContext.workspace, not this default.
+    """
     from app.domain.models.workspace import Workspace
 
     return Workspace.create(root_path="storage/workspaces/default", workspace_id="default_workspace")
@@ -399,7 +426,11 @@ def get_code_parser() -> Any:
 
 
 def get_code_index() -> Any:
-    """Get CodeIndex instance."""
+    """Request-scoped ephemeral in-memory index.
+
+    Not a persistent per-project index. Each request starts empty and is discarded.
+    Do not treat this as cross-request code intelligence cache.
+    """
     from app.application.code.in_memory_index import InMemoryCodeIndex
 
     return InMemoryCodeIndex()
@@ -549,7 +580,7 @@ async def get_agent_runtime(
     )
     del_def, del_handler = create_delegation_tool(orchestrator)
     registry.register(del_def, del_handler)
-
+    runtime.orchestrator = orchestrator
     return runtime
 
 
@@ -569,34 +600,35 @@ def get_context_projector() -> Any:
 
 def get_multi_agent_orchestrator(
     agent_runtime: Any = Depends(get_agent_runtime),
-    agent_registry: Any = Depends(get_agent_registry),
-    context_projector: Any = Depends(get_context_projector),
-    artifact_store: Any = Depends(get_artifact_store),
-    tool_policy_engine: Any = Depends(get_tool_policy_engine),
-    tracer: Any = Depends(get_telemetry_tracer),
-    meter: Any = Depends(get_telemetry_meter),
 ) -> Any:
-    """Get MultiAgentOrchestrator instance."""
-    from app.application.agent.orchestrator import MultiAgentOrchestrator
+    """Return the orchestrator owned by the request's AgentRuntime.
 
-    return MultiAgentOrchestrator(
-        agent_runtime=agent_runtime,
-        agent_registry=agent_registry,
-        context_projector=context_projector,
-        artifact_store=artifact_store,
-        policy_engine=tool_policy_engine,
-        tracer=tracer,
-        meter=meter,
-    )
+    Delegation tools and application use cases must share this instance so budget
+    counters stay consistent for the request. It is not an application singleton.
+    """
+    orchestrator = getattr(agent_runtime, "orchestrator", None)
+    if orchestrator is None:
+        raise RuntimeError("AgentRuntime was composed without a MultiAgentOrchestrator")
+    return orchestrator
 
 
 def get_workspace_resolution_service(
     project_repo: ProjectRepository = Depends(get_project_repository),
 ) -> Any:
-    """Get authoritative WorkspaceResolutionService instance."""
-    from app.application.workspace.resolution_service import WorkspaceResolutionService
+    """Get authoritative WorkspaceResolutionService instance.
 
-    return WorkspaceResolutionService(project_repo=project_repo)
+    Mode and root come from settings, never from model or client payload.
+    Production requires WORKSPACE_MODE=managed.
+    """
+    from app.application.workspace.resolution_service import WorkspaceResolutionService
+    from app.infrastructure.config.settings import settings as app_settings
+
+    return WorkspaceResolutionService(
+        project_repo=project_repo,
+        base_storage_dir=app_settings.workspace_root,
+        workspace_mode=app_settings.workspace_mode,
+        workspace_root=app_settings.workspace_root,
+    )
 
 
 async def get_execute_task_use_case(

@@ -171,7 +171,7 @@ async def test_attack_i_prompt_injection_cannot_alter_authorization() -> None:
         context=ctx,
     )
     assert not result.is_error
-    assert ctx.metadata["approval_granted"] is False
+    assert "approval_granted" not in ctx.metadata
     assert ctx.user_id == "alice"
     assert ctx.project_id == "proj_a"
     assert "Ignore previous instructions" in result.content

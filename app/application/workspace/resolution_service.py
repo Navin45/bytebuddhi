@@ -14,6 +14,9 @@ from app.domain.models.workspace import Workspace
 
 logger = get_logger(__name__)
 
+WORKSPACE_MODE_MANAGED = "managed"
+WORKSPACE_MODE_LOCAL = "local"
+
 
 class WorkspaceResolutionService:
     """Authoritative service resolving workspaces based on trusted principal and project bindings."""
@@ -22,10 +25,32 @@ class WorkspaceResolutionService:
         self,
         project_repo: ProjectRepository,
         base_storage_dir: str = "storage/workspaces",
+        workspace_mode: str = WORKSPACE_MODE_LOCAL,
+        workspace_root: str | None = None,
     ) -> None:
+        mode = workspace_mode.strip().lower()
+        if mode not in {WORKSPACE_MODE_MANAGED, WORKSPACE_MODE_LOCAL}:
+            raise ValueError(f"Unsupported workspace_mode '{workspace_mode}'")
         self.project_repo = project_repo
         self.base_storage_dir = Path(base_storage_dir).resolve()
         self.base_storage_dir.mkdir(parents=True, exist_ok=True)
+        self.workspace_mode = mode
+        root = Path(workspace_root).resolve() if workspace_root else self.base_storage_dir
+        self.workspace_root = root
+        if self.workspace_mode == WORKSPACE_MODE_MANAGED:
+            self.workspace_root.mkdir(parents=True, exist_ok=True)
+
+    def _assert_within_managed_root(self, candidate: Path, *, original: str) -> Path:
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(self.workspace_root)
+        except ValueError as exc:
+            raise WorkspaceBoundaryError(
+                f"Project workspace '{original}' is outside managed root '{self.workspace_root}'",
+                path=str(resolved),
+                root_path=str(self.workspace_root),
+            ) from exc
+        return resolved
 
     async def resolve_workspace(
         self,
@@ -38,14 +63,9 @@ class WorkspaceResolutionService:
             1. If project_id is provided, look up project in ProjectRepository.
             2. If project not found -> raise ProjectNotFoundException.
             3. If project.user_id != user_id -> raise ProjectOwnershipException.
-            4. If project has a local_path:
-               - Validate against path traversal (no "..", symlink escapes).
-               - Root must exist or be created within valid boundary.
-            5. If project has no local_path or project execution:
-               - Allocate project-scoped workspace at {base_storage_dir}/projects/{project_id}.
-            6. If project_id is None (scratch / projectless execution):
-               - Allocate user-scoped scratch workspace at {base_storage_dir}/users/{user_id}.
-               - Never default to repository root ".".
+            4. Managed mode: every resolved root must stay inside workspace_root after canonicalization.
+            5. Local mode: user-selected project.local_path is allowed after traversal checks.
+            6. Model input never selects the workspace.
         """
         user_uuid = UUID(str(user_id)) if isinstance(user_id, str) else user_id
 
@@ -65,39 +85,51 @@ class WorkspaceResolutionService:
                 )
                 raise ProjectOwnershipException(str(project_id), str(user_id))
 
-            # Determine workspace root
             if project.local_path:
-                # Check path traversal
                 raw_path = str(project.local_path)
                 if ".." in raw_path.replace("\\", "/").split("/"):
                     raise WorkspaceBoundaryError(
                         f"Path traversal detected in project local_path: {project.local_path}",
                         path=raw_path,
                     )
-                candidate_path = Path(project.local_path).resolve()
-                candidate_path.mkdir(parents=True, exist_ok=True)
-                ws_root = candidate_path
+                candidate_path = Path(project.local_path)
+                if self.workspace_mode == WORKSPACE_MODE_MANAGED:
+                    ws_root = self._assert_within_managed_root(candidate_path, original=raw_path)
+                    ws_root.mkdir(parents=True, exist_ok=True)
+                else:
+                    candidate_path = candidate_path.resolve()
+                    candidate_path.mkdir(parents=True, exist_ok=True)
+                    ws_root = candidate_path
             else:
                 project_dir = self.base_storage_dir / "projects" / str(project_uuid)
-                project_dir.mkdir(parents=True, exist_ok=True)
-                ws_root = project_dir.resolve()
+                if self.workspace_mode == WORKSPACE_MODE_MANAGED:
+                    ws_root = self._assert_within_managed_root(project_dir, original=str(project_dir))
+                    ws_root.mkdir(parents=True, exist_ok=True)
+                else:
+                    project_dir.mkdir(parents=True, exist_ok=True)
+                    ws_root = project_dir.resolve()
 
             logger.info(
                 "Authoritative project workspace resolved",
                 user_id=str(user_id),
                 project_id=str(project_uuid),
                 workspace_root=str(ws_root),
+                workspace_mode=self.workspace_mode,
             )
             return Workspace.create(root_path=str(ws_root), workspace_id=f"proj_{project_uuid}")
 
-        # Scratch / projectless execution: strictly user-scoped
         user_scratch_dir = self.base_storage_dir / "users" / str(user_uuid)
-        user_scratch_dir.mkdir(parents=True, exist_ok=True)
-        ws_root = user_scratch_dir.resolve()
+        if self.workspace_mode == WORKSPACE_MODE_MANAGED:
+            ws_root = self._assert_within_managed_root(user_scratch_dir, original=str(user_scratch_dir))
+            ws_root.mkdir(parents=True, exist_ok=True)
+        else:
+            user_scratch_dir.mkdir(parents=True, exist_ok=True)
+            ws_root = user_scratch_dir.resolve()
 
         logger.info(
             "User scratch workspace resolved",
             user_id=str(user_id),
             workspace_root=str(ws_root),
+            workspace_mode=self.workspace_mode,
         )
         return Workspace.create(root_path=str(ws_root), workspace_id=f"scratch_{user_uuid}")

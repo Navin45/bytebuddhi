@@ -41,6 +41,7 @@ class LocalProcessHandle(ProcessHandle):
         command: list[str] | str,
         cwd: Path,
         max_buffer_bytes: int = 512 * 1024,
+        max_event_queue: int = 256,
     ):
         self._execution_id = execution_id
         self._proc = proc
@@ -53,7 +54,8 @@ class LocalProcessHandle(ProcessHandle):
         self._finished_at: datetime | None = None
         self._exit_code: int | None = None
 
-        self._event_queue: asyncio.Queue[ProcessEvent | None] = asyncio.Queue()
+        self._event_queue: asyncio.Queue[ProcessEvent | None] = asyncio.Queue(maxsize=max(1, max_event_queue))
+        self._events_dropped: int = 0
 
         self._stdout_chunks: list[str] = []
         self._stderr_chunks: list[str] = []
@@ -71,6 +73,28 @@ class LocalProcessHandle(ProcessHandle):
         self._stderr_task = asyncio.create_task(self._read_stream(self._proc.stderr, "stderr"))
         # Automatic background monitor task ensures events() never deadlocks
         self._monitor_task = asyncio.create_task(self._monitor())
+
+    async def _emit(self, event: ProcessEvent | None, *, droppable: bool) -> None:
+        """Bounded event enqueue. Output may drop; lifecycle/sentinel never drop."""
+        if droppable:
+            try:
+                self._event_queue.put_nowait(event)
+            except asyncio.QueueFull:
+                self._events_dropped += 1
+                self._is_truncated = True
+            return
+        while True:
+            try:
+                self._event_queue.put_nowait(event)
+                return
+            except asyncio.QueueFull:
+                try:
+                    discarded = self._event_queue.get_nowait()
+                    if discarded is not None:
+                        self._events_dropped += 1
+                        self._is_truncated = True
+                except asyncio.QueueEmpty:
+                    await asyncio.sleep(0)
 
     @property
     def execution_id(self) -> str:
@@ -115,13 +139,14 @@ class LocalProcessHandle(ProcessHandle):
                         self._is_truncated = True
 
                 # Emit output event
-                await self._event_queue.put(
+                await self._emit(
                     ProcessEvent(
                         execution_id=self._execution_id,
                         event_type=ProcessEventType.PROCESS_OUTPUT,
                         stream=stream_name,
                         data=text,
-                    )
+                    ),
+                    droppable=True,
                 )
 
         except Exception as e:
@@ -156,16 +181,16 @@ class LocalProcessHandle(ProcessHandle):
                 )
             )
 
-            await self._event_queue.put(
+            await self._emit(
                 ProcessEvent(
                     execution_id=self._execution_id,
                     event_type=event_type,
                     stream="system",
                     data=f"Process exited with code {self._exit_code}",
-                )
+                ),
+                droppable=False,
             )
-            # Sentinel to close any active events() iterator
-            await self._event_queue.put(None)
+            await self._emit(None, droppable=False)
 
     async def cancel(self) -> None:
         """Cancel process and terminate all child descendants."""
@@ -175,13 +200,14 @@ class LocalProcessHandle(ProcessHandle):
         self._status = ProcessStatus.CANCELLED
         self._terminate_process_tree()
 
-        await self._event_queue.put(
+        await self._emit(
             ProcessEvent(
                 execution_id=self._execution_id,
                 event_type=ProcessEventType.PROCESS_CANCELLED,
                 stream="system",
                 data="Process cancelled by user or runtime",
-            )
+            ),
+            droppable=False,
         )
 
     def _terminate_process_tree(self) -> None:
@@ -289,6 +315,7 @@ class LocalProcessManager(ProcessManager):
         env: dict[str, str],
         timeout: float | None = None,
         max_buffer_bytes: int = 512 * 1024,
+        max_event_queue: int = 256,
     ) -> ProcessHandle:
         """Spawn a process and return an active ProcessHandle."""
         execution_id = f"exec_{uuid4().hex[:12]}"
@@ -317,6 +344,7 @@ class LocalProcessManager(ProcessManager):
             command=command,
             cwd=cwd_path,
             max_buffer_bytes=max_buffer_bytes,
+            max_event_queue=max_event_queue,
         )
 
         exec_record = ProcessExecution(

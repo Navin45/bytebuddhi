@@ -1,6 +1,7 @@
 """Verification of CLI readiness and decoupling from HTTP frameworks."""
 
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -18,9 +19,7 @@ from app.domain.models.project import Project
 
 def test_core_runtime_clean_from_web_frameworks() -> None:
     """Importing application runtime and use cases must not pull in fastapi or starlette."""
-    # Ensure neither fastapi nor starlette were required to construct use case
     for mod in ["fastapi", "starlette"]:
-        # If already imported by other tests, verify ExecuteTaskUseCase module itself does not import them
         use_case_mod = sys.modules.get("app.application.use_cases.agent.execute_task")
         assert use_case_mod is not None
         assert not hasattr(use_case_mod, mod)
@@ -71,3 +70,10 @@ async def test_execute_task_use_case_standalone(tmp_path) -> None:
     assert str(execution_context.project_id) == str(project_id)
     assert execution_context.workspace_id == result.workspace_id
     assert "user_id" not in (run_kwargs.get("metadata") or {})
+
+
+def test_docker_uses_supported_python() -> None:
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    assert "python:3.13" in dockerfile
+    assert "uv.lock" in dockerfile
+    assert "uv sync --frozen" in dockerfile

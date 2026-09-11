@@ -96,6 +96,37 @@ class Settings(BaseSettings):
     otel_metrics_enabled: bool = True
     otel_sampling_rate: float = 1.0
 
+    # Workspace policy
+    workspace_mode: str = "local"
+    workspace_root: str = "storage/workspaces"
+
+    # Rate limiting / proxy
+    trusted_proxy_ips: list[str] = Field(default_factory=list)
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in {"production", "prod"}
+
+    def validate_runtime_configuration(self) -> None:
+        """Fail closed on unsafe production configuration."""
+        if not self.is_production:
+            return
+        weak_secrets = {
+            "your-super-secret-jwt-key-change-this",
+            "your-super-secret-jwt-key-change-this-to-something-secure",
+            "change-me",
+            "secret",
+        }
+        if self.jwt_secret_key in weak_secrets or len(self.jwt_secret_key) < 32:
+            raise RuntimeError("Production JWT_SECRET_KEY is missing or too weak")
+        if self.debug:
+            raise RuntimeError("Production must not run with DEBUG=true")
+        db_url = str(self.database_url)
+        if "bytebuddhi:password@" in db_url:
+            raise RuntimeError("Production DATABASE_URL must not use the development default password")
+        if self.workspace_mode.strip().lower() != "managed":
+            raise RuntimeError("Production requires WORKSPACE_MODE=managed")
+
 
 # Global settings instance
 settings = Settings()

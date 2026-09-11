@@ -44,6 +44,13 @@ class ToolRegistry:
         """
         cap_id = definition.id or f"{definition.capability_type.value}.{definition.name}"
 
+        if cap_id in self._id_to_name and self._id_to_name[cap_id] != definition.name:
+            existing_name = self._id_to_name[cap_id]
+            raise ValueError(
+                f"Capability id '{cap_id}' is already registered under name '{existing_name}', "
+                "cannot register a second tool with the same id"
+            )
+
         # Check for name collision
         if definition.name in self._tools_by_name:
             if not allow_override:

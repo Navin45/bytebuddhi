@@ -70,6 +70,23 @@ async def test_model_project_id_cannot_change_artifact_owner(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_missing_execution_context_refuses_global_archive(tmp_path) -> None:
+    store = LocalArtifactStore(base_dir=tmp_path / "artifacts")
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(name="blob", description="large"), lambda: "Z" * 5000)
+    executor = ToolExecutor(registry, artifact_store=store, max_output_chars=80)
+    workspace = Workspace.create(root_path=tmp_path)
+    result = await executor.execute(
+        ToolCall(id="call_missing", name="blob", arguments={}),
+        context=ToolExecutionContext(run_id="r", tool_call_id="call_missing", workspace=workspace),
+    )
+    assert result.is_error is True
+    assert result.error_details is not None
+    assert result.error_details.get("error") == "ExecutionContextRequired"
+    assert await store.get_artifact("tool_out_call_missing") is None
+
+
+@pytest.mark.asyncio
 async def test_multiple_projects_can_store_same_artifact_filename_safely(tmp_path) -> None:
     store = LocalArtifactStore(base_dir=tmp_path / "artifacts")
     await store.save_artifact("summary.txt", "A", project_id="proj_a")

@@ -297,3 +297,64 @@ async def test_oversized_answer_archived_to_artifact_store(tmp_path):
     loaded = await artifact_store.get_artifact(artifact_id, project_id="proj_test")
     assert loaded is not None
     assert len(loaded) == 5000
+
+
+@pytest.mark.asyncio
+async def test_critical_failure_skips_dependents_independent_continue():
+    mock_gateway = AsyncMock(spec=ModelGateway)
+
+    async def generate_response(messages, **kwargs):
+        if "Task 1 Failing" in str(messages):
+            raise RuntimeError("critical boom")
+        return ModelResponse(content="Success response", tool_calls=[])
+
+    mock_gateway.generate.side_effect = generate_response
+    runtime = create_test_runtime(mock_gateway)
+    registry = AgentRegistry()
+    registry.register(
+        AgentDefinition(id="researcher", name="Res", description="d", role=AgentRole.RESEARCHER, system_prompt="p")
+    )
+    registry.register(AgentDefinition(id="coder", name="Cod", description="d", role=AgentRole.CODER, system_prompt="p"))
+    registry.register(
+        AgentDefinition(id="reviewer", name="Rev", description="d", role=AgentRole.REVIEWER, system_prompt="p")
+    )
+    orchestrator = MultiAgentOrchestrator(agent_runtime=runtime, agent_registry=registry)
+    tasks = [
+        AgentTask(task_id="t1", agent_id="researcher", description="Task 1 Failing", is_critical=True),
+        AgentTask(task_id="t2", agent_id="coder", description="Task 2 Depends on 1", depends_on=["t1"]),
+        AgentTask(task_id="t3", agent_id="reviewer", description="Task 3 Independent"),
+    ]
+    orch_result = await orchestrator.execute_tasks(tasks, parent_context=trusted_execution_context())
+    assert orch_result.child_results["t1"].status == TaskExecutionStatus.FAILED
+    assert orch_result.child_results["t2"].status == TaskExecutionStatus.SKIPPED
+    assert orch_result.child_results["t3"].status == TaskExecutionStatus.SUCCESS
+    assert orch_result.status == TaskExecutionStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_orchestration_enforces_absolute_timeout():
+    runtime = AsyncMock()
+
+    async def hang(*args, **kwargs):
+        await asyncio.sleep(30)
+        return None
+
+    runtime.run = hang
+    registry = AgentRegistry()
+    registry.register(
+        AgentDefinition(id="researcher", name="Res", description="d", role=AgentRole.RESEARCHER, system_prompt="p")
+    )
+    orchestrator = MultiAgentOrchestrator(
+        agent_runtime=runtime,
+        agent_registry=registry,
+        config=MultiAgentConfig(max_orchestration_time=0.2),
+    )
+    result = await orchestrator.execute_tasks(
+        [AgentTask(task_id="slow", agent_id="researcher", description="takes forever")],
+        parent_context=trusted_execution_context(),
+    )
+    assert result.status in {TaskExecutionStatus.TIMEOUT, TaskExecutionStatus.CANCELLED, TaskExecutionStatus.FAILED}
+    assert any(
+        child.status in {TaskExecutionStatus.TIMEOUT, TaskExecutionStatus.CANCELLED, TaskExecutionStatus.FAILED}
+        for child in result.child_results.values()
+    )

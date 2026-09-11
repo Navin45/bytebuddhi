@@ -284,7 +284,10 @@ query → WebSearchProvider.search
 ## 5. Security & Isolation Guarantees
 
 1. **Path Traversal Guard**: All tool file paths are resolved with `os.path.realpath()` and verified against `workspace.root_path`. Traversal attempts raise `SecurityError`.
-2. **Self-Approval Guard**: `ToolPolicyEngine` denies any `requires_approval=True` or `RiskLevel.HIGH` tool call where caller claims self-approval within model tool arguments.
+2. **Trusted Approval Guard**: `ToolPolicyEngine` authorizes `requires_approval=True` or `RiskLevel.HIGH` only from immutable `ExecutionContext.approved_actions`. Metadata, tool arguments, and parent-to-child inheritance cannot grant approval.
 3. **MCP Privilege Escalation Guard**: MCP server configurations cannot set `risk_level` or `requires_approval` overrides. Internal security boundaries remain authoritative.
 4. **Telemetry Privacy Guard**: Regex sanitizer in `RedactionPolicy` strips API keys (`sk-...`, `ghp_...`, `ey...`), passwords, and private certificates before exporting spans.
-5. **Web Research SSRF Guard**: Untrusted fetch URLs are scheme-checked, DNS/IP classified, and re-validated on every redirect. Loopback, RFC1918, link-local/metadata, and non-http(s) schemes are rejected. See [Web Research](web_research.md).
+5. **Web Research SSRF Guard**: Untrusted fetch URLs are scheme-checked, DNS/IP classified, and re-validated on every redirect. Loopback, RFC1918, link-local/metadata, and non-http(s) schemes are rejected. DNS rebinding during connect is not perfectly eliminated. See [Web Research](web_research.md).
+6. **Application Authorization**: Cross-user/project access is denied in application services and repositories. Database RLS using `auth.uid()` is not used; claiming PostgreSQL-enforced per-user isolation would be false.
+7. **Managed Workspace Guard**: In `WORKSPACE_MODE=managed`, resolved workspace paths must remain inside `WORKSPACE_ROOT` after canonicalization (symlink and traversal escapes denied).
+8. **Execution-scoped artifacts**: Tool/command archives require trusted `ExecutionContext`. Missing context is an error, not a write to `global/`.

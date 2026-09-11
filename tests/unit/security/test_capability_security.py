@@ -20,6 +20,7 @@ from app.infrastructure.connectors.credentials.env_credential_provider import (
 )
 from app.infrastructure.mcp.client_manager import MCPCapabilityManager
 from app.infrastructure.mcp.mock_mcp_client import MockMCPClient
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -63,7 +64,7 @@ async def test_high_risk_mutation_blocked_without_approval():
 
 @pytest.mark.asyncio
 async def test_high_risk_mutation_allowed_with_approval():
-    """Verify high-risk/approval-gated tool succeeds when context metadata contains approval."""
+    """High-risk tools succeed only with trusted ExecutionContext.approved_actions."""
     registry = ToolRegistry()
     policy = ToolPolicyEngine(registry=registry)
     executor = ToolExecutor(registry, policy_engine=policy)
@@ -82,12 +83,10 @@ async def test_high_risk_mutation_allowed_with_approval():
     registry.register(defn, dummy_create_issue)
 
     ws = Workspace.create(root_path=".")
-    # Context WITH approved_actions
-    approved_ctx = ToolExecutionContext(
-        run_id="run_1",
+    approved_ctx = ToolExecutionContext.from_execution(
+        trusted_execution_context().with_approvals(("github_create_issue",)),
         tool_call_id="call_1",
         workspace=ws,
-        metadata={"user_id": "alice", "approved_actions": ["github_create_issue"]},
     )
 
     tc = ToolCall(id="call_1", name="github_create_issue", arguments={"title": "Fix bug"})

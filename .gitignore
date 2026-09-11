@@ -101,7 +101,7 @@ dump.rdb
 .dockerignore
 
 # uv
-uv.lock
+# uv.lock is the authoritative deployment lockfile and must be committed.
 
 # Temporary files
 *.tmp

@@ -139,9 +139,10 @@ HTTP sessions and optional browser processes are process-wide (documented single
 
 ## Known limitations
 
-- DNS rebinding during the HTTP connect race is not perfectly eliminated.
+- DNS rebinding during the HTTP connect race is not perfectly eliminated. Pre-resolution plus address classification reduces SSRF risk; it is not a kernel-level or connect-time bind guarantee. Perfect DNS-rebinding protection is not claimed.
 - Playwright in-navigation redirects are validated after navigation and via request routing; a tiny TOCTOU window remains.
+- Chromium is launched with `--no-sandbox` for container compatibility. Production browser rendering (`WEB_RENDER_ENABLED=true`) requires a dedicated isolated container/VM; this is not a kernel sandbox. Keep rendering disabled unless that isolation exists.
 - DuckDuckGo HTML markup can change; swap the adapter without touching application ports.
-- JS rendering requires the optional `web-render` extra and installed Chromium.
+- JS rendering requires the optional `web-render` extra and installed Chromium. Real Chromium security tests skip when the browser is unavailable.
 - robots.txt is not fetched.
 - No authenticated fetching, cookie injection, or arbitrary file download.

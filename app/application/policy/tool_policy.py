@@ -82,15 +82,9 @@ class ToolPolicyEngine:
                     or getattr(tool_def, "risk_level", None) == RiskLevel.HIGH
                 ):
                     approved = False
-                    if context is not None and context.metadata:
-                        approved_actions = context.metadata.get("approved_actions", [])
-                        if isinstance(approved_actions, (list, set, tuple)) and (
-                            tool_call.name in approved_actions
-                            or tool_def.id in approved_actions
-                            or "*" in approved_actions
-                        ):
-                            approved = True
-                        if context.metadata.get("approval_granted") is True:
+                    if context is not None and context.execution is not None:
+                        actions = context.execution.approved_actions
+                        if tool_call.name in actions or (tool_def.id and tool_def.id in actions):
                             approved = True
 
                     if not approved:

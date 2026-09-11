@@ -4,7 +4,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.domain.models.execution_context import IDENTITY_METADATA_KEYS, ExecutionContext
+from app.domain.exceptions.execution_exceptions import ExecutionContextRequired
+from app.domain.models.execution_context import STRIPPED_METADATA_KEYS, ExecutionContext
 from app.domain.models.workspace import Workspace
 
 
@@ -16,7 +17,7 @@ def auxiliary_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     """
     if not metadata:
         return {}
-    return {key: value for key, value in metadata.items() if key not in IDENTITY_METADATA_KEYS}
+    return {key: value for key, value in metadata.items() if key not in STRIPPED_METADATA_KEYS}
 
 
 @dataclass
@@ -75,6 +76,13 @@ class ToolExecutionContext:
         if self.execution is not None:
             return self.execution.workspace_id
         return self.workspace.workspace_id
+
+    @property
+    def artifact_scope_id(self) -> str:
+        """Trusted artifact namespace. Missing execution context is an error, not global storage."""
+        if self.execution is None:
+            raise ExecutionContextRequired("Execution-scoped artifacts require a trusted ExecutionContext")
+        return self.execution.artifact_scope_id
 
     @property
     def is_cancelled(self) -> bool:

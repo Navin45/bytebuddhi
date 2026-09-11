@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("Starting ByteBuddhi API", env=settings.app_env)
+    settings.validate_runtime_configuration()
 
     # Initialize database
     try:

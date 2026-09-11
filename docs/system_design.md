@@ -50,9 +50,9 @@ ByteBuddhi separates data storage according to **durability, concurrency, and lo
 │                           │                           │ users, conversations,     │
 │                           │                           │ semantic embeddings.      │
 ├───────────────────────────┼───────────────────────────┼───────────────────────────┤
-│ **Ephemeral Cache Tier**  │ Redis 7+                  │ Distributed rate limits,  │
-│                           │                           │ fast token bucket filters,│
-│                           │                           │ transient cache.          │
+│ **Ephemeral Cache Tier**  │ Redis 7+                  │ Transient cache. HTTP     │
+│                           │                           │ rate limits are           │
+│                           │                           │ process-local per worker. │
 ├───────────────────────────┼───────────────────────────┼───────────────────────────┤
 │ **Run-Scoped Working Tier**│ SQLite (WAL Mode)        │ Low-latency run memory,   │
 │                           │                           │ observation log, TTL.     │
@@ -67,9 +67,9 @@ ByteBuddhi separates data storage according to **durability, concurrency, and lo
 - **Vector Search**: Uses `vector(1536)` columns with HNSW / IVFFlat indexing for cosine similarity retrieval across user, project, and global memory scopes.
 - **Connection Pooling**: SQLAlchemy async engine backed by `asyncpg` with pool sizing (`pool_size=20`, `max_overflow=10`).
 
-### 2.2 Redis (Caching & Rate Limiting)
-- **Sliding Window Rate Limiter**: Redis sorted sets track requests per minute and per hour per authenticated client token.
-- **Connection Management**: Redis connection pools with health-check ping intervals.
+### 2.2 Redis (Caching)
+- Redis is available for cache and optional operational use.
+- HTTP API rate limiting is **process-local in-memory per worker**. It is not a distributed Redis limiter. `X-Forwarded-For` is honored only when the direct peer is in `TRUSTED_PROXY_IPS`.
 
 ### 2.3 SQLite in WAL Mode (Run-Scoped Operational Memory)
 - **Local Isolation**: Each agent run uses an embedded SQLite database file configured with `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;`.
