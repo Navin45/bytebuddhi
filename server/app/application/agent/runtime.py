@@ -300,6 +300,9 @@ class AgentRuntime:
         metadata: dict[str, Any] | None = None,
         config: RunnableConfig | None = None,
         workspace: Workspace | None = None,
+        tool_registry: ToolRegistry | None = None,
+        tool_executor: ToolExecutor | None = None,
+        max_iterations: int | None = None,
     ) -> AgentRunState:
         """Execute the agent loop for the given messages.
 
@@ -310,17 +313,21 @@ class AgentRuntime:
             metadata: Optional metadata dictionary.
             config: Optional LangGraph RunnableConfig (e.g. thread_id for checkpointer).
             workspace: Optional Workspace override for this run.
+            tool_registry: Optional ToolRegistry override (e.g. for scoped child capabilities).
+            tool_executor: Optional ToolExecutor override.
+            max_iterations: Optional per-run iteration limit.
 
         Returns:
             AgentRunState: Final run state including answer, status, and history.
         """
         active_run_id = run_id or f"run_{uuid4().hex[:12]}"
+        effective_max_iter = max_iterations if max_iterations is not None else self.max_iterations
         initial_state: AgentLoopState = {
             "run_id": active_run_id,
             "messages": messages,
             "status": AgentStatus.RUNNING.value,
             "iteration": 0,
-            "max_iterations": self.max_iterations,
+            "max_iterations": effective_max_iter,
             "pending_tool_calls": [],
             "tool_calls": [],
             "tool_results": [],
@@ -329,19 +336,22 @@ class AgentRuntime:
             "metadata": metadata or {},
         }
 
-        # If system prompt or workspace is customized, we compile with it
+        # If system prompt, workspace, or tools are customized, compile graph with overrides
         graph_to_use = self.graph
         custom_prompt = system_prompt and system_prompt != self.default_system_prompt
         custom_ws = workspace and workspace != self.workspace
-        if custom_prompt or custom_ws:
+        custom_tools = tool_registry is not None and tool_registry != self.tool_registry
+        custom_executor = tool_executor is not None and tool_executor != self.tool_executor
+        if custom_prompt or custom_ws or custom_tools or custom_executor:
             graph_to_use = create_agent_loop_graph(
                 model_gateway=self.model_gateway,
-                tool_registry=self.tool_registry,
-                tool_executor=self.tool_executor,
+                tool_registry=tool_registry or self.tool_registry,
+                tool_executor=tool_executor or self.tool_executor,
                 context_engine=self.context_engine,
                 system_prompt=system_prompt or self.default_system_prompt,
                 checkpointer=self.checkpointer,
                 workspace=workspace or self.workspace,
+                memory_orchestrator=self.memory_orchestrator,
             )
 
         run_config = config or {"configurable": {"thread_id": active_run_id}}

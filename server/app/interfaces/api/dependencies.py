@@ -469,7 +469,7 @@ async def get_agent_runtime(
     context_engine = ContextEngine()
     checkpointer = PostgresCheckpointSaver(db)
 
-    return AgentRuntime(
+    runtime = AgentRuntime(
         model_gateway=model_gateway,
         tool_registry=registry,
         context_engine=context_engine,
@@ -477,4 +477,53 @@ async def get_agent_runtime(
         checkpointer=checkpointer,
         workspace=workspace,
         memory_orchestrator=memory_orchestrator,
+    )
+
+    # Register multi-agent delegation capability
+    from app.application.agent.orchestrator import MultiAgentOrchestrator
+    from app.application.agent.registry import create_default_registry
+    from app.application.tools.builtin.delegation_tools import create_delegation_tool
+
+    orchestrator = MultiAgentOrchestrator(
+        agent_runtime=runtime,
+        agent_registry=create_default_registry(),
+        artifact_store=artifact_store,
+        policy_engine=tool_policy_engine,
+    )
+    del_def, del_handler = create_delegation_tool(orchestrator)
+    registry.register(del_def, del_handler)
+
+    return runtime
+
+
+def get_agent_registry() -> Any:
+    """Get default trusted AgentRegistry."""
+    from app.application.agent.registry import create_default_registry
+
+    return create_default_registry()
+
+
+def get_context_projector() -> Any:
+    """Get default AgentContextProjector."""
+    from app.application.agent.context_projector import AgentContextProjector
+
+    return AgentContextProjector()
+
+
+def get_multi_agent_orchestrator(
+    agent_runtime: Any = Depends(get_agent_runtime),
+    agent_registry: Any = Depends(get_agent_registry),
+    context_projector: Any = Depends(get_context_projector),
+    artifact_store: Any = Depends(get_artifact_store),
+    tool_policy_engine: Any = Depends(get_tool_policy_engine),
+) -> Any:
+    """Get MultiAgentOrchestrator instance."""
+    from app.application.agent.orchestrator import MultiAgentOrchestrator
+
+    return MultiAgentOrchestrator(
+        agent_runtime=agent_runtime,
+        agent_registry=agent_registry,
+        context_projector=context_projector,
+        artifact_store=artifact_store,
+        policy_engine=tool_policy_engine,
     )
