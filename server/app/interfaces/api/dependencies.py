@@ -362,6 +362,30 @@ async def get_memory_orchestrator(
     )
 
 
+def get_code_parser() -> Any:
+    """Get CodeParser instance."""
+    from app.infrastructure.parser.tree_sitter_parser import TreeSitterCodeParser
+
+    return TreeSitterCodeParser()
+
+
+def get_code_index() -> Any:
+    """Get CodeIndex instance."""
+    from app.application.code.in_memory_index import InMemoryCodeIndex
+
+    return InMemoryCodeIndex()
+
+
+def get_code_intelligence_service(
+    parser: Any = Depends(get_code_parser),
+    index: Any = Depends(get_code_index),
+) -> Any:
+    """Get CodeIntelligenceService instance."""
+    from app.application.code.intelligence_service import CodeIntelligenceService
+
+    return CodeIntelligenceService(parser=parser, index=index)
+
+
 async def get_agent_runtime(
     db: AsyncSession = Depends(get_db),
     model_gateway: ModelGateway = Depends(get_model_gateway),
@@ -369,10 +393,12 @@ async def get_agent_runtime(
     command_executor: Any = Depends(get_command_executor),
     tool_policy_engine: Any = Depends(get_tool_policy_engine),
     memory_orchestrator: Any = Depends(get_memory_orchestrator),
+    code_intelligence_service: Any = Depends(get_code_intelligence_service),
 ) -> Any:
-    """Get AgentRuntime configured with Phase 1, 2, & 3 capabilities and Postgres checkpoint saver."""
+    """Get AgentRuntime configured with Phase 1-4 capabilities and Postgres checkpoint saver."""
     from app.application.agent.context import ContextEngine
     from app.application.agent.runtime import AgentRuntime
+    from app.application.tools.builtin.code_tools import create_code_tools
     from app.application.tools.builtin.command_tools import create_command_tool
     from app.application.tools.builtin.echo_tool import register_echo_tool
     from app.application.tools.builtin.filesystem_tools import create_filesystem_tools
@@ -388,6 +414,9 @@ async def get_agent_runtime(
 
     cmd_def, cmd_handler = create_command_tool(command_executor)
     registry.register(cmd_def, cmd_handler)
+
+    for defn, handler in create_code_tools(code_intelligence_service, default_workspace=workspace):
+        registry.register(defn, handler)
 
     tool_executor = ToolExecutor(registry, policy_engine=tool_policy_engine)
     context_engine = ContextEngine()

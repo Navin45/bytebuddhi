@@ -45,10 +45,15 @@ class Language:
     # File extension to language mapping
     EXTENSION_MAP = {
         ".py": ProgrammingLanguage.PYTHON,
+        ".pyi": ProgrammingLanguage.PYTHON,
         ".js": ProgrammingLanguage.JAVASCRIPT,
         ".jsx": ProgrammingLanguage.JAVASCRIPT,
+        ".mjs": ProgrammingLanguage.JAVASCRIPT,
+        ".cjs": ProgrammingLanguage.JAVASCRIPT,
         ".ts": ProgrammingLanguage.TYPESCRIPT,
         ".tsx": ProgrammingLanguage.TYPESCRIPT,
+        ".mts": ProgrammingLanguage.TYPESCRIPT,
+        ".cts": ProgrammingLanguage.TYPESCRIPT,
         ".java": ProgrammingLanguage.JAVA,
         ".go": ProgrammingLanguage.GO,
         ".rs": ProgrammingLanguage.RUST,

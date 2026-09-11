@@ -53,6 +53,8 @@ dependencies = [
     "greenlet>=3.3.1",
     "tavily-python>=0.5.0",
     "aiofiles>=25.1.0",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
 ]
 
 [tool.ruff]
