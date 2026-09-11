@@ -23,9 +23,11 @@ from app.domain.models.agent import (
     MultiAgentConfig,
     TaskExecutionStatus,
 )
+from app.domain.models.execution_context import ExecutionContext
 from app.domain.models.memory import ExecutionObservation, MemoryScope
 from app.domain.models.workspace import Workspace
 from app.infrastructure.persistence.sqlite.sqlite_memory_store import SqliteMemoryStore
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -78,7 +80,7 @@ async def test_attack_a_capability_escalation():
     )
 
     task = AgentTask(task_id="t_esc", agent_id="researcher", description="Inspect and try writing")
-    result = await orchestrator.execute_task(task)
+    result = await orchestrator.execute_task(task, parent_context=trusted_execution_context())
 
     # write_file was not present in scoped child registry, so tool call resulted in ToolNotFoundError
     assert result.status == TaskExecutionStatus.SUCCESS or result.status == TaskExecutionStatus.FAILED
@@ -107,27 +109,35 @@ async def test_attack_b_identity_tampering():
         input_data={"user_id": "admin", "project_id": "root_proj"},
     )
 
-    # Verified parent context has user_id="alice"
-    verified_parent_ctx = ToolExecutionContext(
-        run_id="run_alice",
-        tool_call_id="call_1",
-        workspace=Workspace.create(root_path="."),
+    parent_ws = Workspace.create(root_path=".")
+    parent_execution = ExecutionContext(
         user_id="alice",
-        metadata={"user_id": "alice", "project_id": "alice_proj"},
+        project_id="alice_proj",
+        conversation_id=None,
+        run_id="run_alice",
+        workspace_id=parent_ws.workspace_id,
+    )
+    verified_parent_ctx = ToolExecutionContext.from_execution(
+        parent_execution,
+        tool_call_id="call_1",
+        workspace=parent_ws,
     )
 
     result = await orchestrator.execute_task(task, parent_context=verified_parent_ctx)
     assert result.status == TaskExecutionStatus.SUCCESS
 
-    # Verify context projector enforced verified parent identity, ignoring malicious task.input_data
+    # Verify context projector does not copy identity into model/tool metadata
     _messages, meta = orchestrator.context_projector.project_child_context(
         task=task,
         definition=agent_registry.get("coder"),
         child_run_id="c1",
+        parent_execution=parent_execution,
         parent_metadata=verified_parent_ctx.metadata,
     )
-    assert meta["user_id"] == "alice"
-    assert meta["project_id"] == "alice_proj"
+    assert "user_id" not in meta
+    assert "project_id" not in meta
+    assert parent_execution.user_id == "alice"
+    assert parent_execution.project_id == "alice_proj"
 
 
 @pytest.mark.asyncio
@@ -183,6 +193,7 @@ async def test_attack_d_parent_approval_escalation():
     executor = ToolExecutor(parent_registry, policy_engine=policy)
 
     # Context with parent approval ONLY for github_create_issue
+    parent_execution = trusted_execution_context(user_id="alice", run_id="parent_run_d")
     parent_meta = {"user_id": "alice", "approved_actions": ["github_create_issue"]}
 
     # Context projector must NOT pass approved_actions to child
@@ -193,6 +204,7 @@ async def test_attack_d_parent_approval_escalation():
         task=AgentTask(task_id="t1", agent_id="coder", description="del"),
         definition=AgentDefinition(id="coder", name="C", description="d", role=AgentRole.CODER, system_prompt="p"),
         child_run_id="child_run_d",
+        parent_execution=parent_execution,
         parent_metadata=parent_meta,
     )
 
@@ -248,10 +260,16 @@ async def test_attack_e_recursive_spawning_and_depth_limits():
     )
 
     # 1. Non-delegating agent researcher tries to delegate -> REJECTED
+    ws = Workspace.create(root_path=".")
     task_non_delegate = AgentTask(task_id="t_sub", agent_id="researcher", description="subtask")
     res1 = await orchestrator.execute_task(
         task_non_delegate,
-        parent_context={"agent_id": "researcher", "delegation_depth": 1},
+        parent_context=ToolExecutionContext.from_execution(
+            trusted_execution_context(run_id="p_depth_1", delegation_depth=1),
+            tool_call_id="call_d1",
+            workspace=ws,
+            metadata={"agent_id": "researcher"},
+        ),
     )
     assert res1.status == TaskExecutionStatus.FAILED
     assert "does not have delegation permission" in res1.error
@@ -260,7 +278,12 @@ async def test_attack_e_recursive_spawning_and_depth_limits():
     task_deep = AgentTask(task_id="t_deep", agent_id="planner", description="deep task")
     res2 = await orchestrator.execute_task(
         task_deep,
-        parent_context={"agent_id": "planner", "delegation_depth": 2},
+        parent_context=ToolExecutionContext.from_execution(
+            trusted_execution_context(run_id="p_depth_2", delegation_depth=2),
+            tool_call_id="call_d2",
+            workspace=ws,
+            metadata={"agent_id": "planner"},
+        ),
     )
     assert res2.status == TaskExecutionStatus.FAILED
     assert "Maximum delegation depth (2) exceeded" in res2.error

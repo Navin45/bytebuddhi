@@ -190,6 +190,7 @@ class ToolExecutor:
                 if self.artifact_store is not None:
                     try:
                         artifact_id = f"tool_out_{tool_call.id or uuid4().hex[:8]}"
+                        project_id = context.project_id if context is not None else None
                         ref = await self.artifact_store.save_artifact(
                             artifact_id=artifact_id,
                             content=content,
@@ -198,6 +199,7 @@ class ToolExecutor:
                                 "tool_call_id": tool_call.id,
                                 "run_id": context.run_id if context else None,
                             },
+                            project_id=project_id,
                         )
                         content = (
                             f"{content[:500]}\n\n"

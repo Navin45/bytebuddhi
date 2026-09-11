@@ -250,6 +250,22 @@ class Meter(Protocol):
 - Implemented by `OpenTelemetryTracer` and `OpenTelemetryMeter` in `app/infrastructure/observability/`.
 - Fallbacks automatically provided by `NoOpTracer` and `NoOpMeter` on any configuration failure.
 
+### 3.5 Web Research Orchestration
+
+```text
+query → WebSearchProvider.search
+     → select/dedupe URLs (rank order)
+     → UrlSafetyPolicy.assert_safe
+     → WebFetcher.fetch (no automatic redirects)
+     → extract HTML → optional WebRenderer fallback
+     → bound chars → ArtifactStore.save_artifact(project_id=trusted)
+     → ResearchResult (previews + artifact ids)
+```
+
+- Model input is only `query` and optional `max_results`.
+- Identity for artifact ownership is taken from `ToolExecutionContext`, never from tool arguments.
+- Errors are domain exceptions (`UnsafeUrl`, `PrivateAddressBlocked`, `FetchTimeout`, `ContentTooLarge`, `ResearchBudgetExceeded`, `ResearchCancelled`, …).
+
 ---
 
 ## 4. Concurrency & Synchronization Model
@@ -271,3 +287,4 @@ class Meter(Protocol):
 2. **Self-Approval Guard**: `ToolPolicyEngine` denies any `requires_approval=True` or `RiskLevel.HIGH` tool call where caller claims self-approval within model tool arguments.
 3. **MCP Privilege Escalation Guard**: MCP server configurations cannot set `risk_level` or `requires_approval` overrides. Internal security boundaries remain authoritative.
 4. **Telemetry Privacy Guard**: Regex sanitizer in `RedactionPolicy` strips API keys (`sk-...`, `ghp_...`, `ey...`), passwords, and private certificates before exporting spans.
+5. **Web Research SSRF Guard**: Untrusted fetch URLs are scheme-checked, DNS/IP classified, and re-validated on every redirect. Loopback, RFC1918, link-local/metadata, and non-http(s) schemes are rejected. See [Web Research](web_research.md).

@@ -2,7 +2,7 @@
 
 > **Document Version:** 1.0.0  
 > **Status:** Production-Grade Baseline  
-> **Scope:** Phases 0 through 7 (Core Runtime, Local Execution, Memory/Context/Artifacts, Code Intelligence, Connectors/MCP, Multi-Agent Orchestration, OpenTelemetry Observability)
+> **Scope:**  (Core Runtime, Local Execution, Memory/Context/Artifacts, Code Intelligence, Connectors/MCP, Multi-Agent Orchestration, OpenTelemetry Observability, Web Research)
 
 ---
 
@@ -147,6 +147,11 @@ flowchart TB
 - **Privacy Enforcement**: Automated regex redaction masks API keys, bearer tokens, and private keys. Metric dimensions are filtered against low-cardinality allowlists to prevent memory leaks.
 - **Defensive Telemetry Isolation**: Telemetry failures or exporter network dropouts are caught gracefully and never disrupt agent execution.
 
+### 4.8 Web Research & Content Extraction (Phase 7.6)
+- **Capability path**: Agents invoke `web_research` through `ToolRegistry` → `ToolPolicyEngine` → `ToolExecutor` → `WebResearchService`. There is no runtime special case and no LangGraph-node search provider.
+- **Ports**: Application-owned `WebSearchProvider`, `WebFetcher`, and `WebRenderer`. The first search adapter is a DuckDuckGo HTML client; it is not part of the application contract.
+- **Safety**: Scheme allowlist, DNS/IP classification, per-redirect SSRF checks, streaming byte limits, bounded concurrency/timeouts, project-scoped `ArtifactStore` writes, and an explicit untrusted-content notice. See [Web Research](web_research.md).
+
 ---
 
 ## 5. Technology Stack Rationale
@@ -168,7 +173,7 @@ flowchart TB
 
 ## 6. Non-Functional Requirements (NFR) Validation
 
-- **Reliability**: 264+ automated unit, integration, and security tests passing with 100% pass rate.
+- **Reliability**: 361+ automated unit, integration, and security tests passing with 100% pass rate.
 - **Security**: Strict path canonicalization, command risk gating, and zero prompt/secret telemetry leakage.
 - **Concurrency**: Non-blocking async execution across tool calls, process streams, and child tasks.
 - **Extensibility**: Clean hexagonal ports enable adding new connectors or MCP servers with zero changes to agent loop logic.

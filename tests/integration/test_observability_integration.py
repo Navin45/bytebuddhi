@@ -31,6 +31,7 @@ from app.domain.models.workspace import Workspace
 from app.infrastructure.observability.otel_meter import OpenTelemetryMeter
 from app.infrastructure.observability.otel_tracer import OpenTelemetryTracer
 from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -136,7 +137,12 @@ async def test_full_observability_pipeline_integration(tmp_path):
 
     result = await orchestrator.execute_tasks(
         tasks=tasks,
-        parent_context={"user_id": "alice", "project_id": "proj_obs", "run_id": "parent_obs_100"},
+        parent_context=trusted_execution_context(
+            user_id="alice",
+            project_id="proj_obs",
+            run_id="parent_obs_100",
+            workspace_id=workspace.workspace_id,
+        ),
     )
 
     assert result.status == TaskExecutionStatus.SUCCESS

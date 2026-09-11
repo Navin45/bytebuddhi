@@ -17,6 +17,7 @@ from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
 from app.domain.models.workspace import Workspace
 from app.infrastructure.parser.tree_sitter_parser import TreeSitterCodeParser
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -83,7 +84,10 @@ async def test_code_intelligence_with_agent_runtime(tmp_path: Path):
 
     state = await runtime.run(
         messages=[{"role": "user", "content": "Analyze payment_service.py structure"}],
-        run_id="run_code_int",
+        execution_context=trusted_execution_context(
+            run_id="run_code_int",
+            workspace_id=workspace.workspace_id,
+        ),
     )
 
     assert state.status == AgentStatus.COMPLETED

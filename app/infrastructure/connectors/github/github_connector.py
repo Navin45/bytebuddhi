@@ -193,7 +193,7 @@ class GitHubConnector(BaseConnector):
 
     async def _get_auth_headers(self, context: ToolExecutionContext | None = None) -> dict[str, str]:
         """Resolve GitHub bearer token securely from caller context without exposing secrets."""
-        project_id = context.metadata.get("project_id") if context and context.metadata else None
+        project_id = context.project_id if context else None
         user_id = context.user_id if context else None
 
         credential = await self.credential_provider.get_credential(

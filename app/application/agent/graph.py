@@ -61,14 +61,14 @@ def create_agent_graph(
 
     The workflow is:
     1. Classify user intent
-    2. Conditionally retrieve code context or perform web search
+    2. Conditionally retrieve code context or skip to generation
     3. Generate response
     4. Handle errors if they occur
 
     Args:
         llm_provider: LLM provider for the agent
         checkpoint_saver: Optional checkpoint saver for state persistence
-        search_service: Optional Tavily search service for web searches
+        search_service: Unused legacy argument retained for call-site compatibility
 
     Returns:
         StateGraph: Compiled agent graph ready for execution
@@ -138,7 +138,7 @@ class ByteBuddhiAgent:
         graph: Compiled LangGraph agent
         llm_provider: LLM provider for the agent
         checkpoint_saver: Optional checkpoint saver for persistence
-        search_service: Optional Tavily search service for web searches
+        search_service: Unused legacy argument retained for call-site compatibility
     """
 
     def __init__(
@@ -152,7 +152,7 @@ class ByteBuddhiAgent:
         Args:
             llm_provider: LLM provider for the agent
             checkpoint_saver: Optional checkpoint saver for state persistence
-            search_service: Optional Tavily search service for web searches
+            search_service: Unused legacy argument retained for call-site compatibility
         """
         self.llm_provider = llm_provider
         self.checkpoint_saver = checkpoint_saver

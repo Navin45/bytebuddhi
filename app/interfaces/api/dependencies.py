@@ -495,6 +495,20 @@ async def get_agent_runtime(
     # Register GitHub connector capabilities
     github_connector.register_capabilities(registry)
 
+    # Register web research capability (provider-agnostic application service)
+    from app.application.tools.builtin.web_research import create_web_research_tool
+    from app.infrastructure.config.settings import settings as app_settings
+    from app.infrastructure.web.lifecycle import get_web_research_resources
+
+    web_resources = get_web_research_resources(
+        settings=app_settings,
+        artifact_store=artifact_store,
+        tracer=tracer,
+        meter=meter,
+    )
+    web_def, web_handler = create_web_research_tool(web_resources.service)
+    registry.register(web_def, web_handler)
+
     # Wire registry into policy engine for risk & approval validation
     tool_policy_engine.registry = registry
 

@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 from collections import defaultdict, deque
-from typing import Any
 from uuid import uuid4
 
 from app.application.agent.context_projector import AgentContextProjector
@@ -23,6 +22,7 @@ from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
+from app.domain.exceptions.execution_exceptions import ExecutionContextRequired
 from app.domain.models.agent import (
     AgentDefinition,
     AgentLifecycleEvent,
@@ -32,9 +32,23 @@ from app.domain.models.agent import (
     OrchestrationResult,
     TaskExecutionStatus,
 )
+from app.domain.models.execution_context import ExecutionContext
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
 
 logger = get_logger(__name__)
+
+
+def _require_parent_execution(
+    parent_context: ToolExecutionContext | ExecutionContext | None,
+) -> ExecutionContext:
+    """Resolve trusted parent identity. Metadata dicts are never accepted."""
+    if isinstance(parent_context, ExecutionContext):
+        return parent_context
+    if isinstance(parent_context, ToolExecutionContext) and parent_context.execution is not None:
+        return parent_context.execution
+    raise ExecutionContextRequired(
+        "MultiAgentOrchestrator requires a trusted ExecutionContext; metadata identity is not accepted"
+    )
 
 
 class MultiAgentOrchestrator:
@@ -158,22 +172,22 @@ class MultiAgentOrchestrator:
     async def execute_task(
         self,
         task: AgentTask,
-        parent_context: ToolExecutionContext | dict[str, Any] | None = None,
+        parent_context: ToolExecutionContext | ExecutionContext | None = None,
         cancellation_token: asyncio.Event | None = None,
     ) -> AgentResult:
         """Execute a single child agent task with budget reservation, scoping, and timeout."""
-        # 1. Extract parent metadata
+        parent_execution = _require_parent_execution(parent_context)
         if isinstance(parent_context, ToolExecutionContext):
             parent_meta = dict(parent_context.metadata)
             if parent_context.cancellation_token and not cancellation_token:
                 cancellation_token = parent_context.cancellation_token
-        elif isinstance(parent_context, dict):
-            parent_meta = dict(parent_context)
         else:
             parent_meta = {}
 
-        parent_run_id = str(parent_meta.get("run_id") or parent_meta.get("parent_run_id", "root"))
         child_run_id = f"child_{task.agent_id}_{uuid4().hex[:8]}"
+        parent_run_id = parent_execution.run_id
+        parent_depth = parent_execution.delegation_depth
+        child_execution = parent_execution.derive_child(child_run_id)
 
         # 2. Check cancellation
         if cancellation_token and cancellation_token.is_set():
@@ -201,7 +215,6 @@ class MultiAgentOrchestrator:
             self._total_delegations_count += 1
 
         # 4. Check delegation depth & permissions
-        parent_depth = int(parent_meta.get("delegation_depth", 0))
         if parent_depth >= self.config.max_delegation_depth:
             return AgentResult(
                 task_id=task.task_id,
@@ -255,6 +268,7 @@ class MultiAgentOrchestrator:
             task=task,
             definition=definition,
             child_run_id=child_run_id,
+            parent_execution=parent_execution,
             parent_metadata=parent_meta,
         )
         scoped_registry, scoped_executor = self._get_scoped_tools(definition)
@@ -284,9 +298,9 @@ class MultiAgentOrchestrator:
                 child_run_id=child_run_id,
                 agent_id=definition.id,
                 task_id=task.task_id,
-                user_id=str(parent_meta.get("user_id") or ""),
-                project_id=str(parent_meta.get("project_id") or ""),
-                conversation_id=str(parent_meta.get("conversation_id") or ""),
+                user_id=child_execution.user_id_str,
+                project_id=child_execution.project_id_str or "",
+                conversation_id=child_execution.conversation_id_str or "",
             )
             with with_correlation_context(child_corr_ctx):
                 self._active_children_gauge.add(1, {"agent_role": definition.role.value})
@@ -326,6 +340,7 @@ class MultiAgentOrchestrator:
                                     system_prompt=definition.system_prompt,
                                     run_id=child_run_id,
                                     metadata=child_metadata,
+                                    execution_context=child_execution,
                                     tool_registry=scoped_registry,
                                     tool_executor=scoped_executor,
                                     max_iterations=definition.max_iterations,
@@ -344,6 +359,7 @@ class MultiAgentOrchestrator:
                                         artifact_id=art_id,
                                         content=raw_answer,
                                         metadata={"agent_id": definition.id, "task_id": task.task_id},
+                                        project_id=child_execution.project_id_str,
                                     )
                                     artifacts.append(ref)
                                     answer = (
@@ -535,19 +551,19 @@ class MultiAgentOrchestrator:
     async def execute_tasks(
         self,
         tasks: list[AgentTask],
-        parent_context: ToolExecutionContext | dict[str, Any] | None = None,
+        parent_context: ToolExecutionContext | ExecutionContext | None = None,
         cancellation_token: asyncio.Event | None = None,
     ) -> OrchestrationResult:
         """Execute a graph of tasks with topological dependency order and concurrency bounds."""
         orchestration_id = f"orch_{uuid4().hex[:8]}"
-        if isinstance(parent_context, ToolExecutionContext):
-            parent_run_id = parent_context.run_id
-            if parent_context.cancellation_token and not cancellation_token:
-                cancellation_token = parent_context.cancellation_token
-        elif isinstance(parent_context, dict):
-            parent_run_id = str(parent_context.get("run_id", "root"))
-        else:
-            parent_run_id = "root"
+        parent_execution = _require_parent_execution(parent_context)
+        parent_run_id = parent_execution.run_id
+        if (
+            isinstance(parent_context, ToolExecutionContext)
+            and parent_context.cancellation_token
+            and not cancellation_token
+        ):
+            cancellation_token = parent_context.cancellation_token
 
         if not tasks:
             return OrchestrationResult(

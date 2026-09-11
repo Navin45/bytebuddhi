@@ -31,6 +31,11 @@ class SpanNames:
     PROCESS_EXECUTE = "process.execute"
     CONNECTOR_REQUEST = "connector.request"
     MCP_EXECUTE = "mcp.execute"
+    WEB_RESEARCH = "web.research"
+    WEB_SEARCH = "web.search"
+    WEB_FETCH = "web.fetch"
+    WEB_EXTRACT = "web.extract"
+    WEB_RENDER = "web.render"
 
 
 class SpanAttributes:
@@ -87,6 +92,17 @@ class SpanAttributes:
     MCP_SERVER = "bytebuddhi.mcp.server"
     MCP_CAPABILITY = "bytebuddhi.mcp.capability"
 
+    # Web research (bounded enums / counts only — never full URLs or queries)
+    WEB_PROVIDER = "bytebuddhi.web.provider"
+    WEB_RESULT_COUNT = "bytebuddhi.web.result_count"
+    WEB_PAGES_ATTEMPTED = "bytebuddhi.web.pages_attempted"
+    WEB_PAGES_SUCCEEDED = "bytebuddhi.web.pages_succeeded"
+    WEB_RENDER_FALLBACKS = "bytebuddhi.web.render_fallbacks"
+    WEB_BYTES_FETCHED = "bytebuddhi.web.bytes_fetched"
+    WEB_CONTENT_CHARS = "bytebuddhi.web.content_chars"
+    WEB_EXTRACTION_METHOD = "bytebuddhi.web.extraction_method"
+    BROWSER_STATUS = "bytebuddhi.browser.status"
+
 
 class MetricNames:
     """Controlled metric names across ByteBuddhi subsystems."""
@@ -129,6 +145,14 @@ class MetricNames:
     MCP_CALLS_TOTAL = "bytebuddhi.mcp_calls_total"
     MCP_FAILURES_TOTAL = "bytebuddhi.mcp_failures_total"
     MCP_DURATION = "bytebuddhi.mcp_duration"
+
+    # Web research
+    WEB_RESEARCH_TOTAL = "bytebuddhi.web_research_total"
+    WEB_RESEARCH_DURATION = "bytebuddhi.web_research_duration"
+    WEB_SEARCH_TOTAL = "bytebuddhi.web_search_total"
+    WEB_FETCH_TOTAL = "bytebuddhi.web_fetch_total"
+    WEB_RENDER_TOTAL = "bytebuddhi.web_render_total"
+    BROWSER_DURATION = "bytebuddhi.browser_duration"
 
 
 class RedactionPolicy:
@@ -214,6 +238,10 @@ class DataBoundingPolicy:
         "mcp_server",
         "memory_scope",
         "error_type",
+        "extraction_method",
+        "content_type",
+        "operation",
+        "browser_status",
     }
 
     @classmethod

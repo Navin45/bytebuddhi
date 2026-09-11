@@ -55,3 +55,12 @@ async def test_artifact_id_does_not_bypass_authorization(artifact_store: LocalAr
 
     # Legitimate owner accesses successfully
     assert await artifact_store.get_artifact(secret_id, project_id="proj_victim") == "Secret vulnerability report"
+
+
+@pytest.mark.asyncio
+async def test_artifact_id_alone_does_not_authorize_access(artifact_store: LocalArtifactStore) -> None:
+    """artifact_id without matching project scope is not an authorization grant."""
+    await artifact_store.save_artifact("known-id", "secret", project_id="proj_a")
+    assert await artifact_store.get_artifact("known-id") is None
+    assert await artifact_store.get_artifact("known-id", project_id="proj_b") is None
+    assert await artifact_store.get_artifact("known-id", project_id="proj_a") == "secret"

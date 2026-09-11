@@ -65,3 +65,9 @@ async def test_execute_task_use_case_standalone(tmp_path) -> None:
     assert result.response == "CLI task executed successfully"
     assert result.workspace_id.startswith("proj_")
     assert mock_runtime.run.called
+    run_kwargs = mock_runtime.run.await_args.kwargs
+    execution_context = run_kwargs["execution_context"]
+    assert str(execution_context.user_id) == str(user_id)
+    assert str(execution_context.project_id) == str(project_id)
+    assert execution_context.workspace_id == result.workspace_id
+    assert "user_id" not in (run_kwargs.get("metadata") or {})

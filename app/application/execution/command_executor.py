@@ -102,6 +102,7 @@ class CommandExecutor:
                         artifact_id=stdout_art_id,
                         content=result.stdout_preview,
                         metadata={"execution_id": result.execution_id, "stream": "stdout"},
+                        project_id=context.project_id if context is not None else None,
                     )
                     result.stdout_ref = stdout_uri
 
@@ -111,6 +112,7 @@ class CommandExecutor:
                         artifact_id=stderr_art_id,
                         content=result.stderr_preview,
                         metadata={"execution_id": result.execution_id, "stream": "stderr"},
+                        project_id=context.project_id if context is not None else None,
                     )
                     result.stderr_ref = stderr_uri
             except Exception as ae:

@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -10,6 +9,7 @@ from app.application.agent.types import AgentStatus
 from app.application.tools.definition import ToolCall, ToolResult
 from app.domain.models.conversation import Conversation
 from app.domain.models.user import User
+from app.domain.models.workspace import Workspace
 from app.interfaces.api.dependencies import (
     get_agent_runtime,
     get_conversation_repository,
@@ -63,7 +63,10 @@ async def test_chat_endpoint_with_agent_runtime():
     )
 
     mock_workspace_res = AsyncMock()
-    mock_workspace_res.resolve_workspace.return_value = Path("storage/workspaces/test")
+    mock_workspace_res.resolve_workspace.return_value = Workspace.create(
+        root_path="storage/workspaces/test",
+        workspace_id="ws_chat_test",
+    )
 
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_conversation_repository] = lambda: mock_conv_repo
@@ -90,11 +93,11 @@ async def test_chat_endpoint_with_agent_runtime():
 
             mock_runtime.run.assert_called_once()
             run_kwargs = mock_runtime.run.call_args.kwargs
-            assert run_kwargs["metadata"] == {
-                "user_id": str(user_id),
-                "project_id": str(mock_conv.project_id),
-                "conversation_id": str(conv_id),
-            }
+            execution_context = run_kwargs["execution_context"]
+            assert str(execution_context.user_id) == str(user_id)
+            assert str(execution_context.project_id) == str(mock_conv.project_id)
+            assert str(execution_context.conversation_id) == str(conv_id)
+            assert execution_context.workspace_id == "ws_chat_test"
     finally:
         app.dependency_overrides.clear()
 
@@ -157,11 +160,10 @@ async def test_chat_endpoint_without_project_metadata():
             assert response.status_code == 200
             mock_runtime.run.assert_called_once()
             run_kwargs = mock_runtime.run.call_args.kwargs
-            assert run_kwargs["metadata"] == {
-                "user_id": str(user_id),
-                "project_id": None,
-                "conversation_id": str(conv_id),
-            }
+            execution_context = run_kwargs["execution_context"]
+            assert str(execution_context.user_id) == str(user_id)
+            assert execution_context.project_id is None
+            assert str(execution_context.conversation_id) == str(conv_id)
     finally:
         app.dependency_overrides.clear()
 
@@ -219,6 +221,7 @@ async def test_chat_endpoint_unauthorized_user_forbidden():
 async def test_runtime_memory_scope_selection_from_metadata():
     from app.application.agent.runtime import AgentRuntime
     from app.application.tools.registry import ToolRegistry
+    from app.domain.models.execution_context import ExecutionContext
     from app.domain.models.memory import MemoryScope
 
     mock_gateway = AsyncMock()
@@ -239,7 +242,13 @@ async def test_runtime_memory_scope_selection_from_metadata():
     # 1. Run with User A and Project A
     await runtime.run(
         messages=[{"role": "user", "content": "Query"}],
-        metadata={"user_id": "user_A", "project_id": "proj_A"},
+        execution_context=ExecutionContext(
+            user_id="user_A",
+            project_id="proj_A",
+            conversation_id=None,
+            run_id="run_a",
+            workspace_id="ws_a",
+        ),
     )
     mock_orch.retrieve_memories.assert_called_once()
     scopes_passed = mock_orch.retrieve_memories.call_args.kwargs["scopes"]
@@ -252,7 +261,13 @@ async def test_runtime_memory_scope_selection_from_metadata():
     mock_orch.retrieve_memories.reset_mock()
     await runtime.run(
         messages=[{"role": "user", "content": "Query 2"}],
-        metadata={"user_id": "user_A", "project_id": None},
+        execution_context=ExecutionContext(
+            user_id="user_A",
+            project_id=None,
+            conversation_id=None,
+            run_id="run_a2",
+            workspace_id="ws_a",
+        ),
     )
     scopes_passed_2 = mock_orch.retrieve_memories.call_args.kwargs["scopes"]
     assert (MemoryScope.USER, "user_A") in scopes_passed_2

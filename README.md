@@ -6,7 +6,7 @@
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-1.30+-purple.svg)](https://opentelemetry.io/)
 [![Package Manager: uv](https://img.shields.io/badge/uv-astral-green.svg)](https://astral.sh/uv)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Tests](https://img.shields.io/badge/tests-264%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-361%20passed-brightgreen.svg)]()
 
 ByteBuddhi is a production-grade AI coding and multi-agent execution platform built on clean hexagonal architecture. It provides reliable agent runtimes, durable state with PostgreSQL checkpoints, working memory with SQLite WAL, structure-aware code intelligence powered by Tree-sitter, unified capability integrations via native tools, connectors, and the Model Context Protocol (MCP), multi-agent delegation orchestration, and first-class OpenTelemetry observability.
 
@@ -45,6 +45,7 @@ ByteBuddhi is a production-grade AI coding and multi-agent execution platform bu
 │ - SQLite WAL (run)  │    │ - Native Tools      │    │ - OTLP / Console    │
 │ - Postgres pgvector │    │ - GitHub Connector  │    │ - Low-cardinality   │
 │ - ArtifactStore     │    │ - MCP Client Mgr    │    │ - Failure isolated  │
+│                     │    │ - Web Research      │    │                     │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
@@ -69,7 +70,7 @@ ByteBuddhi is a production-grade AI coding and multi-agent execution platform bu
 | **External Protocols** | MCP (Model Context Protocol) | Standardized client integration for external capabilities |
 | **Observability** | OpenTelemetry | Distributed tracing, metrics histograms, and semantic spans |
 | **Package Manager** | uv (Astral) | Lightning-fast Python package and virtualenv manager |
-| **Quality Gate** | Ruff, Mypy, Pytest | Formatting, linting, strict static typing, and 264+ tests |
+| **Quality Gate** | Ruff, Mypy, Pytest | Formatting, linting, strict static typing, and 361+ tests |
 
 ---
 
@@ -84,7 +85,8 @@ bytebuddhi/
 │   │   ├── memory/               # Memory classification, ranking, orchestrator
 │   │   ├── policy/               # Command policy & tool authorization engine
 │   │   ├── ports/                # Abstract input & output ports
-│   │   └── tools/                # Tool definitions, registry, executor
+│   │   ├── web/                  # Web research orchestration, URL policy, extraction
+│   │   ├── tools/                # Tool definitions, registry, executor
 │   ├── domain/                   # Enterprise business entities & value objects
 │   │   ├── models/               # Domain models (agent, memory, code, telemetry)
 │   │   └── value_objects/        # Languages, emails, credentials, paths
@@ -171,6 +173,11 @@ OTEL_EXPORTER=console          # "console" | "otlp" | "none"
 OTEL_OTLP_ENDPOINT=http://localhost:4317
 OTEL_TRACING_ENABLED=true
 OTEL_METRICS_ENABLED=true
+
+# Web research (optional JS render is off by default)
+WEB_SEARCH_PROVIDER=duckduckgo
+WEB_SEARCH_MAX_RESULTS=5
+WEB_RENDER_ENABLED=false
 ```
 
 ### 3. Start Supporting Infrastructure
@@ -204,7 +211,7 @@ uv run uvicorn app.interfaces.api.main:app --host 0.0.0.0 --port 8000 --reload
 ByteBuddhi maintains a 100% passing automated test suite with zero tolerance for regressions.
 
 ```bash
-# Run the complete test suite (264+ unit, integration, and security tests)
+# Run the complete test suite (361+ unit, integration, and security tests)
 uv run pytest
 
 # Check linting rules (Ruff)
@@ -257,7 +264,7 @@ Detailed production-grade architectural and design specifications are maintained
 
 - **[High-Level Design (HLD)](docs/hld.md)**: System vision, C4 container models, subsystem breakdown, technology stack rationale, and non-functional requirements.
 - **[Low-Level Design (LLD)](docs/lld.md)**: Class contracts, hexagonal layer ports, state machine transitions, priority token budgeting algorithm, and concurrency models.
-- **[System Design](docs/system_design.md)**: Deployment topology, multi-tier data architecture (PostgreSQL with pgvector, Redis, SQLite WAL, ArtifactStore), sandboxed OS process execution, and resilience strategies.
+- **[Web Research](docs/web_research.md)**: Provider-agnostic search, SSRF-safe fetch, HTML extraction, optional Playwright fallback, ArtifactStore integration, and security model.
 - **Architecture Flowcharts (Mermaid)**:
   - [`docs/system_architecture.mermaid`](docs/system_architecture.mermaid): C4 container & component topology.
   - [`docs/agent_runtime_flow.mermaid`](docs/agent_runtime_flow.mermaid): Single-agent reasoning and tool execution loop sequence.
@@ -272,6 +279,7 @@ Detailed production-grade architectural and design specifications are maintained
 - **Command Authorization**: Modifying, network-accessing, and destructive OS commands are gated by policy engines requiring explicit caller permissions.
 - **Privacy by Construction**: Automated redaction sanitizes API keys, bearer tokens, passwords, and private identifiers before any telemetry span or metric is emitted.
 - **Strict Data Bounding**: Outputs exceeding 6,000 characters are archived to `ArtifactStore` rather than bloating LLM contexts or metric backends.
+- **Web Research SSRF**: Public web fetch is scheme-limited, DNS/IP classified, redirect-validated, and byte-bounded. External page text is untrusted data.
 
 ---
 

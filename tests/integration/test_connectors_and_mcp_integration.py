@@ -14,6 +14,7 @@ from app.application.tools.definition import ToolCall, ToolDefinition
 from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
 from app.domain.models.credential import Credential, CredentialType
+from app.domain.models.execution_context import ExecutionContext
 from app.domain.models.mcp import MCPServerConfig
 from app.domain.models.workspace import Workspace
 from app.infrastructure.connectors.credentials.env_credential_provider import (
@@ -178,7 +179,13 @@ async def test_agent_runtime_with_connectors_and_mcp(tmp_path):
     run_state = await runtime.run(
         messages=messages,
         workspace=workspace,
-        metadata={"user_id": "alice"},
+        execution_context=ExecutionContext(
+            user_id="alice",
+            project_id="proj_e2e",
+            conversation_id=None,
+            run_id="run_connectors",
+            workspace_id=workspace.workspace_id,
+        ),
     )
 
     assert run_state.status == AgentStatus.COMPLETED

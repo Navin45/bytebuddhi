@@ -18,6 +18,7 @@ from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
 from app.domain.models.workspace import Workspace
 from app.infrastructure.execution.local_process_manager import LocalProcessManager
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -72,7 +73,11 @@ async def test_agent_runtime_executes_local_command(tmp_path):
     )
 
     messages = [{"role": "user", "content": "Check python version please"}]
-    run_state = await runtime.run(messages=messages, workspace=workspace)
+    run_state = await runtime.run(
+        messages=messages,
+        workspace=workspace,
+        execution_context=trusted_execution_context(workspace_id=workspace.workspace_id),
+    )
 
     assert run_state.status == AgentStatus.COMPLETED
     assert run_state.iteration == 2

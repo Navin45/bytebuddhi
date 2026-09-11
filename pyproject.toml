@@ -51,7 +51,6 @@ dependencies = [
     "ipdb>=0.13.13",
     "watchdog>=6.0.0",
     "greenlet>=3.3.1",
-    "tavily-python>=0.5.0",
     "aiofiles>=25.1.0",
     "tree-sitter-javascript>=0.25.0",
     "tree-sitter-typescript>=0.23.2",
@@ -59,6 +58,11 @@ dependencies = [
     "opentelemetry-api>=1.30.0",
     "opentelemetry-sdk>=1.30.0",
     "opentelemetry-exporter-otlp>=1.30.0",
+]
+
+[project.optional-dependencies]
+web-render = [
+    "playwright>=1.49.0",
 ]
 
 [tool.ruff]
@@ -83,5 +87,8 @@ plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "playwright_browser: real Chromium Playwright tests (requires playwright extra and installed Chromium)",
+]
 
 

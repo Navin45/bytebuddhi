@@ -42,7 +42,7 @@ class LocalArtifactStore(ArtifactStore):
         project_id: str | None = None,
     ) -> str:
         """Save artifact content to the local filesystem with project isolation."""
-        proj_id = project_id or (str(metadata.get("project_id")) if metadata and metadata.get("project_id") else None)
+        proj_id = project_id
         with self.tracer.start_as_current_span(
             SpanNames.ARTIFACT_STORE,
             attributes={

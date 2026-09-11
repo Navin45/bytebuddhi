@@ -5,7 +5,6 @@ Provides the inner agent execution loop orchestrated via LangGraph.
 
 import time
 from typing import Any
-from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -27,10 +26,12 @@ from app.application.ports.output.observability.context import get_correlation_c
 from app.application.ports.output.observability.meter import Meter
 from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
-from app.application.tools.context import ToolExecutionContext
+from app.application.tools.context import ToolExecutionContext, auxiliary_metadata
 from app.application.tools.definition import ToolCall
 from app.application.tools.executor import ToolExecutor
 from app.application.tools.registry import ToolRegistry
+from app.domain.exceptions.execution_exceptions import ExecutionContextRequired
+from app.domain.models.execution_context import ExecutionContext
 from app.domain.models.memory import ExecutionObservation, MemoryScope
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
 from app.domain.models.workspace import Workspace
@@ -47,6 +48,7 @@ def create_agent_loop_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     workspace: Workspace | None = None,
     memory_orchestrator: MemoryOrchestrator | None = None,
+    execution_context: ExecutionContext | None = None,
 ) -> CompiledStateGraph:
     """Build and compile the inner agent loop StateGraph using LangGraph."""
 
@@ -73,13 +75,13 @@ def create_agent_loop_graph(
         tool_schemas = tool_registry.get_schemas_for_openai()
         retrieved_memories = []
         if memory_orchestrator:
-            run_id = state.get("run_id", "")
-            meta = state.get("metadata", {})
+            if execution_context is None:
+                raise ExecutionContextRequired("AgentRuntime memory retrieval requires a trusted ExecutionContext")
+            run_id = execution_context.run_id
             scopes = [(MemoryScope.AGENT_RUN, run_id)]
-            if project_id := meta.get("project_id"):
-                scopes.append((MemoryScope.PROJECT, str(project_id)))
-            if user_id := meta.get("user_id"):
-                scopes.append((MemoryScope.USER, str(user_id)))
+            if execution_context.project_id_str:
+                scopes.append((MemoryScope.PROJECT, execution_context.project_id_str))
+            scopes.append((MemoryScope.USER, execution_context.user_id_str))
 
             last_query = ""
             for m in reversed(state.get("messages", [])):
@@ -176,20 +178,19 @@ def create_agent_loop_graph(
             for tc in pending_calls
         ]
 
+        if execution_context is None:
+            raise ExecutionContextRequired("AgentRuntime tool execution requires a trusted ExecutionContext")
         ws = workspace or Workspace.create(root_path=".")
-        run_id = state.get("run_id", "")
-        metadata_dict = state.get("metadata", {}) or {}
-        user_id = metadata_dict.get("user_id")
+        run_id = execution_context.run_id
+        aux_metadata = auxiliary_metadata(state.get("metadata", {}) or {})
 
-        # Execute tools safely with ToolExecutionContext
         results = []
         for call in tool_calls:
-            ctx = ToolExecutionContext(
-                run_id=run_id,
+            ctx = ToolExecutionContext.from_execution(
+                execution_context,
                 tool_call_id=call.id,
                 workspace=ws,
-                user_id=user_id,
-                metadata=metadata_dict,
+                metadata=aux_metadata,
             )
             res = await tool_executor.execute(call, context=ctx)
             results.append(res)
@@ -306,6 +307,7 @@ class AgentRuntime:
             checkpointer=self.checkpointer,
             workspace=self.workspace,
             memory_orchestrator=self.memory_orchestrator,
+            execution_context=None,
         )
 
     async def run(
@@ -314,6 +316,7 @@ class AgentRuntime:
         system_prompt: str | None = None,
         run_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        execution_context: ExecutionContext | None = None,
         config: RunnableConfig | None = None,
         workspace: Workspace | None = None,
         tool_registry: ToolRegistry | None = None,
@@ -326,7 +329,8 @@ class AgentRuntime:
             messages: Conversation messages (role and content).
             system_prompt: Optional override for system prompt.
             run_id: Optional unique run identifier.
-            metadata: Optional metadata dictionary.
+            metadata: Optional auxiliary metadata. Trusted identity is never read from this dict.
+            execution_context: Trusted immutable identity for the run.
             config: Optional LangGraph RunnableConfig (e.g. thread_id for checkpointer).
             workspace: Optional Workspace override for this run.
             tool_registry: Optional ToolRegistry override (e.g. for scoped child capabilities).
@@ -336,9 +340,11 @@ class AgentRuntime:
         Returns:
             AgentRunState: Final run state including answer, status, and history.
         """
-        active_run_id = run_id or f"run_{uuid4().hex[:12]}"
+        if execution_context is None:
+            raise ExecutionContextRequired("AgentRuntime.run requires a trusted ExecutionContext")
+        active_run_id = execution_context.run_id
         effective_max_iter = max_iterations if max_iterations is not None else self.max_iterations
-        run_metadata = metadata or {}
+        run_metadata = auxiliary_metadata(metadata)
         initial_state: AgentLoopState = {
             "run_id": active_run_id,
             "messages": messages,
@@ -359,7 +365,7 @@ class AgentRuntime:
         custom_ws = workspace and workspace != self.workspace
         custom_tools = tool_registry is not None and tool_registry != self.tool_registry
         custom_executor = tool_executor is not None and tool_executor != self.tool_executor
-        if custom_prompt or custom_ws or custom_tools or custom_executor:
+        if custom_prompt or custom_ws or custom_tools or custom_executor or execution_context is not None:
             graph_to_use = create_agent_loop_graph(
                 model_gateway=self.model_gateway,
                 tool_registry=tool_registry or self.tool_registry,
@@ -369,6 +375,7 @@ class AgentRuntime:
                 checkpointer=self.checkpointer,
                 workspace=workspace or self.workspace,
                 memory_orchestrator=self.memory_orchestrator,
+                execution_context=execution_context,
             )
 
         run_config = config or {"configurable": {"thread_id": active_run_id}}
@@ -377,12 +384,17 @@ class AgentRuntime:
 
         start_time = time.perf_counter()
         corr_ctx = get_correlation_context()
+        span_user = execution_context.user_id_str
+        span_project = execution_context.project_id_str or ""
+        span_conversation = execution_context.conversation_id_str or ""
+        span_parent = execution_context.parent_run_id or corr_ctx.parent_run_id or ""
+        span_child = execution_context.child_run_id or corr_ctx.child_run_id or active_run_id
         span_attrs = {
-            SpanAttributes.PARENT_RUN_ID: corr_ctx.parent_run_id or "",
-            SpanAttributes.CHILD_RUN_ID: corr_ctx.child_run_id or active_run_id,
-            SpanAttributes.USER_ID: str(run_metadata.get("user_id") or corr_ctx.user_id or ""),
-            SpanAttributes.PROJECT_ID: str(run_metadata.get("project_id") or corr_ctx.project_id or ""),
-            SpanAttributes.CONVERSATION_ID: str(run_metadata.get("conversation_id") or corr_ctx.conversation_id or ""),
+            SpanAttributes.PARENT_RUN_ID: span_parent,
+            SpanAttributes.CHILD_RUN_ID: span_child,
+            SpanAttributes.USER_ID: span_user,
+            SpanAttributes.PROJECT_ID: span_project,
+            SpanAttributes.CONVERSATION_ID: span_conversation,
         }
 
         parent_span = self.tracer.get_current_span()

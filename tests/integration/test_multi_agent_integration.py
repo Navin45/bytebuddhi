@@ -27,6 +27,7 @@ from app.application.tools.registry import ToolRegistry
 from app.domain.models.agent import AgentTask, TaskExecutionStatus
 from app.domain.models.workspace import Workspace
 from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -137,7 +138,12 @@ async def test_multi_agent_end_to_end_workflow(tmp_path):
     # 5. Execute orchestration
     orch_result = await orchestrator.execute_tasks(
         tasks=tasks,
-        parent_context={"user_id": "alice", "project_id": "proj_prod", "run_id": "parent_run_100"},
+        parent_context=trusted_execution_context(
+            user_id="alice",
+            project_id="proj_prod",
+            run_id="parent_run_100",
+            workspace_id=workspace.workspace_id,
+        ),
     )
 
     # 6. Verify overall and individual status

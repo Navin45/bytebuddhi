@@ -20,6 +20,7 @@ from app.domain.models.workspace import Workspace
 from app.infrastructure.execution.local_process_manager import LocalProcessManager
 from app.infrastructure.persistence.sqlite.sqlite_memory_store import SqliteMemoryStore
 from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
+from tests.helpers.execution import trusted_execution_context
 
 
 @pytest.mark.asyncio
@@ -97,7 +98,10 @@ async def test_agent_runtime_memory_and_observation_integration(tmp_path: Path):
 
     state = await runtime.run(
         messages=[{"role": "user", "content": "Execute echo and verify memory"}],
-        run_id="run_mem_test",
+        execution_context=trusted_execution_context(
+            run_id="run_mem_test",
+            workspace_id=workspace.workspace_id,
+        ),
     )
 
     assert state.status == AgentStatus.COMPLETED

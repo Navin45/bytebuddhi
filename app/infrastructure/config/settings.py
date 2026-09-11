@@ -49,9 +49,26 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-3-5-sonnet-20241022"
 
-    # Tavily Search
-    tavily_api_key: str | None = None
-    tavily_max_results: int = 5
+    # Web research (provider-agnostic; adapters selected in infrastructure)
+    web_search_provider: str = "duckduckgo"
+    web_search_endpoint: str = "https://html.duckduckgo.com/html/"
+    web_search_max_results: int = 5
+    web_search_timeout_seconds: float = 10.0
+    web_fetch_timeout_seconds: float = 15.0
+    web_fetch_max_response_bytes: int = 1_000_000
+    web_fetch_max_redirects: int = 5
+    web_fetch_max_retries: int = 3
+    web_research_max_pages: int = 5
+    web_research_max_concurrent_fetches: int = 4
+    web_research_max_extracted_chars: int = 10_000
+    web_research_max_total_chars: int = 30_000
+    web_research_max_duration_seconds: float = 30.0
+    web_research_preview_chars: int = 800
+    web_render_enabled: bool = False
+    web_render_timeout_seconds: float = 20.0
+    web_render_max_pages: int = 2
+    web_render_max_browser_instances: int = 1
+    web_user_agent: str = "ByteBuddhi/0.1 (web-research; +https://github.com/bytebuddhi)"
 
     # LangSmith
     langchain_tracing_v2: bool = True

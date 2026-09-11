@@ -1,7 +1,11 @@
 """Unit tests for AgentContextProjector."""
 
+import pytest
+
 from app.application.agent.context_projector import AgentContextProjector
+from app.domain.exceptions.execution_exceptions import ExecutionContextRequired
 from app.domain.models.agent import AgentDefinition, AgentRole, AgentTask, MultiAgentConfig
+from tests.helpers.execution import trusted_execution_context
 
 
 def test_context_projector_minimal_context_selection():
@@ -24,13 +28,15 @@ def test_context_projector_minimal_context_selection():
         input_data={"pr_number": 42, "repo": "bytebuddhi"},
     )
 
+    parent_execution = trusted_execution_context(
+        user_id="alice",
+        project_id="proj_123",
+        conversation_id="conv_456",
+        run_id="parent_run_001",
+    )
     parent_meta = {
-        "user_id": "alice",
-        "project_id": "proj_123",
-        "conversation_id": "conv_456",
-        "run_id": "parent_run_001",
-        "delegation_depth": 0,
-        # Sensitive fields that must NOT be passed to child
+        "user_id": "attacker",
+        "project_id": "proj_evil",
         "approved_actions": ["github_create_issue"],
         "approval_granted": True,
         "raw_secret": "sensitive_token",
@@ -40,10 +46,10 @@ def test_context_projector_minimal_context_selection():
         task=task,
         definition=definition,
         child_run_id="child_run_789",
+        parent_execution=parent_execution,
         parent_metadata=parent_meta,
     )
 
-    # 1. Verify messages content
     assert len(messages) == 1
     content = messages[0]["content"]
     assert "Check pull request #42 for potential race conditions." in content
@@ -51,18 +57,33 @@ def test_context_projector_minimal_context_selection():
     assert "- **pr_number**: 42" in content
     assert "- **repo**: bytebuddhi" in content
 
-    # 2. Verify identity fields preserved immutably
-    assert metadata["user_id"] == "alice"
-    assert metadata["project_id"] == "proj_123"
-    assert metadata["conversation_id"] == "conv_456"
-    assert metadata["parent_run_id"] == "parent_run_001"
-    assert metadata["child_run_id"] == "child_run_789"
-    assert metadata["delegation_depth"] == 1
-
-    # 3. Verify security isolation: approval metadata excluded
+    assert "user_id" not in metadata
+    assert "project_id" not in metadata
+    assert "conversation_id" not in metadata
+    assert metadata["agent_id"] == "reviewer"
+    assert metadata["task_id"] == "task_audit_1"
     assert "approved_actions" not in metadata
     assert "approval_granted" not in metadata
     assert "raw_secret" not in metadata
+
+
+def test_context_projector_requires_execution_context():
+    projector = AgentContextProjector()
+    definition = AgentDefinition(
+        id="coder",
+        name="Coder",
+        description="Writes code",
+        role=AgentRole.CODER,
+        system_prompt="Write code.",
+    )
+    task = AgentTask(task_id="t1", agent_id="coder", description="Task")
+    with pytest.raises(ExecutionContextRequired):
+        projector.project_child_context(
+            task=task,
+            definition=definition,
+            child_run_id="c1",
+            parent_execution=None,  # type: ignore[arg-type]
+        )
 
 
 def test_context_projector_excludes_secret_keys_in_input_data():
@@ -94,7 +115,7 @@ def test_context_projector_excludes_secret_keys_in_input_data():
         task=task,
         definition=definition,
         child_run_id="c1",
-        parent_metadata={},
+        parent_execution=trusted_execution_context(),
     )
 
     content = messages[0]["content"]
@@ -115,7 +136,7 @@ def test_context_projector_token_bounding():
         description="Analyzes data",
         role=AgentRole.GENERALIST,
         system_prompt="Analyze.",
-        token_budget=200,  # 200 tokens ~ 800 chars
+        token_budget=200,
     )
 
     task = AgentTask(
@@ -128,7 +149,7 @@ def test_context_projector_token_bounding():
         task=task,
         definition=definition,
         child_run_id="c_huge",
-        parent_metadata={},
+        parent_execution=trusted_execution_context(),
     )
 
     content = messages[0]["content"]

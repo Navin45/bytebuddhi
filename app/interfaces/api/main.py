@@ -59,6 +59,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Error closing Redis", error=str(e))
 
+    try:
+        from app.infrastructure.web.lifecycle import close_web_research_resources
+
+        await close_web_research_resources()
+    except Exception as e:
+        logger.error("Error closing web research resources", error=str(e))
+
 
 # Create FastAPI application
 app = FastAPI(

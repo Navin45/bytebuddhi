@@ -9,6 +9,7 @@ from app.application.ports.output.llm.model_gateway import ModelGateway, ModelRe
 from app.application.tools.builtin.echo_tool import register_echo_tool
 from app.application.tools.definition import ToolCall
 from app.application.tools.registry import ToolRegistry
+from tests.helpers.execution import trusted_execution_context
 
 
 class MockModelGateway(ModelGateway):
@@ -42,7 +43,10 @@ async def test_agent_runtime_direct_answer():
     registry = ToolRegistry()
     runtime = AgentRuntime(model_gateway=gateway, tool_registry=registry)
 
-    result = await runtime.run(messages=[{"role": "user", "content": "hello"}])
+    result = await runtime.run(
+        messages=[{"role": "user", "content": "hello"}],
+        execution_context=trusted_execution_context(),
+    )
 
     assert result.status == AgentStatus.COMPLETED
     assert result.final_response == "Hello! How can I help with your code?"
@@ -71,7 +75,10 @@ async def test_agent_runtime_tool_call_loop():
     register_echo_tool(registry)
     runtime = AgentRuntime(model_gateway=gateway, tool_registry=registry)
 
-    result = await runtime.run(messages=[{"role": "user", "content": "echo ByteBuddhi"}])
+    result = await runtime.run(
+        messages=[{"role": "user", "content": "echo ByteBuddhi"}],
+        execution_context=trusted_execution_context(),
+    )
 
     assert result.status == AgentStatus.COMPLETED
     assert result.iteration == 2
@@ -99,7 +106,10 @@ async def test_agent_runtime_iteration_limit():
         max_iterations=3,
     )
 
-    result = await runtime.run(messages=[{"role": "user", "content": "loop forever"}])
+    result = await runtime.run(
+        messages=[{"role": "user", "content": "loop forever"}],
+        execution_context=trusted_execution_context(),
+    )
 
     assert result.status == AgentStatus.FAILED
     assert result.error is not None
@@ -125,6 +135,7 @@ async def test_agent_runtime_with_checkpointer():
     result = await runtime.run(
         messages=[{"role": "user", "content": "hello"}],
         config=thread_config,
+        execution_context=trusted_execution_context(run_id="run_checkpoint"),
     )
 
     assert result.status == AgentStatus.COMPLETED

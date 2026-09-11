@@ -18,6 +18,7 @@ from app.domain.models.agent import (
     TaskExecutionStatus,
 )
 from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
+from tests.helpers.execution import trusted_execution_context
 
 
 def create_test_runtime(gateway: ModelGateway, registry: ToolRegistry | None = None) -> AgentRuntime:
@@ -60,7 +61,9 @@ async def test_execute_single_task_success():
         description="Find symbol definitions for AgentRuntime.",
     )
 
-    result = await orchestrator.execute_task(task, parent_context={"user_id": "alice", "run_id": "p_run_1"})
+    result = await orchestrator.execute_task(
+        task, parent_context=trusted_execution_context(user_id="alice", run_id="p_run_1")
+    )
 
     assert result.status == TaskExecutionStatus.SUCCESS
     assert result.task_id == "task_res_1"
@@ -108,7 +111,7 @@ async def test_execute_single_task_timeout():
         timeout_seconds=0.05,  # Very short timeout
     )
 
-    result = await orchestrator.execute_task(task)
+    result = await orchestrator.execute_task(task, parent_context=trusted_execution_context())
     assert result.status == TaskExecutionStatus.TIMEOUT
     assert "timed out" in result.error.lower()
     assert orchestrator.active_reservations == 0
@@ -136,7 +139,9 @@ async def test_execute_single_task_pre_cancellation():
     cancel_evt.set()  # Cancelled beforehand
 
     task = AgentTask(task_id="task_cancel", agent_id="coder", description="Write code")
-    result = await orchestrator.execute_task(task, cancellation_token=cancel_evt)
+    result = await orchestrator.execute_task(
+        task, parent_context=trusted_execution_context(), cancellation_token=cancel_evt
+    )
 
     assert result.status == TaskExecutionStatus.CANCELLED
     assert mock_gateway.generate.call_count == 0
@@ -170,7 +175,7 @@ async def test_atomic_global_budget_exhaustion():
     await orchestrator._reserve_budget(100)
 
     task = AgentTask(task_id="task_budget", agent_id="coder", description="Task exceeding budget")
-    result = await orchestrator.execute_task(task)
+    result = await orchestrator.execute_task(task, parent_context=trusted_execution_context())
 
     assert result.status == TaskExecutionStatus.BUDGET_EXHAUSTED
     assert "budget exhausted" in result.error.lower()
@@ -249,7 +254,7 @@ async def test_execute_tasks_dependency_failure_isolation():
         AgentTask(task_id="t3", agent_id="reviewer", description="Task 3 Independent"),
     ]
 
-    orch_result = await orchestrator.execute_tasks(tasks)
+    orch_result = await orchestrator.execute_tasks(tasks, parent_context=trusted_execution_context())
 
     assert orch_result.child_results["t1"].status == TaskExecutionStatus.FAILED
     assert orch_result.child_results["t2"].status == TaskExecutionStatus.SKIPPED
@@ -279,7 +284,8 @@ async def test_oversized_answer_archived_to_artifact_store(tmp_path):
     )
 
     task = AgentTask(task_id="task_huge", agent_id="coder", description="Generate huge output")
-    result = await orchestrator.execute_task(task)
+    parent = trusted_execution_context(project_id="proj_test")
+    result = await orchestrator.execute_task(task, parent_context=parent)
 
     assert result.status == TaskExecutionStatus.SUCCESS
     assert len(result.answer) < 2000
@@ -288,6 +294,6 @@ async def test_oversized_answer_archived_to_artifact_store(tmp_path):
 
     # Verify saved in artifact store
     artifact_id = result.artifacts[0]
-    loaded = await artifact_store.get_artifact(artifact_id)
+    loaded = await artifact_store.get_artifact(artifact_id, project_id="proj_test")
     assert loaded is not None
     assert len(loaded) == 5000

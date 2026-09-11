@@ -14,8 +14,10 @@ def test_canonical_runtime_exports() -> None:
     assert agent_pkg.AgentRuntime is AgentRuntime
     assert MultiAgentOrchestrator is not None
 
-    # Infrastructure services must never be exported from agent package
-    assert not hasattr(agent_pkg, "TavilySearchService")
+    # Infrastructure search adapters must never be exported from the agent package
+    assert not hasattr(agent_pkg, "DuckDuckGoSearchProvider")
+    assert not hasattr(agent_pkg, "HttpxWebFetcher")
+    assert not hasattr(agent_pkg, "PlaywrightWebRenderer")
 
 
 def test_legacy_runtime_deprecation_warning() -> None:

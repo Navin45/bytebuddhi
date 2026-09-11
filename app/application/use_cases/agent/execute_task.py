@@ -68,8 +68,8 @@ class ExecuteTaskUseCase:
 
         run_id = command.run_id or f"run_{uuid4().hex[:12]}"
 
-        # 2. Build trusted immutable ExecutionContext
-        _ = ExecutionContext(
+        # 2. Build trusted immutable ExecutionContext immediately after workspace resolution.
+        execution_context = ExecutionContext(
             user_id=user_uuid,
             project_id=project_uuid,
             conversation_id=command.conversation_id,
@@ -88,6 +88,9 @@ class ExecuteTaskUseCase:
             created_conv = await self.conversation_repo.create(new_conv)
             conv_id = created_conv.id
 
+        if conv_id is not None and conv_id != execution_context.conversation_id:
+            execution_context = execution_context.with_conversation_id(conv_id)
+
         # 4. Save human message if message repo provided
         if self.message_repo and conv_id is not None:
             conv_uuid = UUID(str(conv_id)) if isinstance(conv_id, str) else conv_id
@@ -98,7 +101,7 @@ class ExecuteTaskUseCase:
             )
             await self.message_repo.create(human_msg)
 
-        # 5. Invoke canonical AgentRuntime
+        # 5. Invoke canonical AgentRuntime with the trusted context.
         logger.info(
             "Executing task via canonical runtime",
             run_id=run_id,
@@ -111,12 +114,7 @@ class ExecuteTaskUseCase:
             messages=[{"role": "user", "content": command.prompt}],
             workspace=workspace,
             run_id=run_id,
-            metadata={
-                "user_id": str(user_uuid),
-                "project_id": str(project_uuid) if project_uuid else None,
-                "conversation_id": str(conv_id) if conv_id else None,
-                "workspace_id": workspace.workspace_id,
-            },
+            execution_context=execution_context,
         )
 
         response_text = run_state.final_response or ""

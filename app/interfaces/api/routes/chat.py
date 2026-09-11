@@ -17,6 +17,7 @@ from app.application.ports.output.repository.conversation_repository import (
 from app.application.ports.output.repository.message_repository import MessageRepository
 from app.application.workspace.resolution_service import WorkspaceResolutionService
 from app.domain.models.conversation import Conversation
+from app.domain.models.execution_context import ExecutionContext
 from app.domain.models.message import Message
 from app.domain.models.user import User
 from app.infrastructure.config.logger import get_logger
@@ -298,17 +299,18 @@ async def send_message(
     # Build messages for LLM
     llm_messages = [{"role": msg.role, "content": msg.content} for msg in history]
 
-    # Build trusted runtime metadata from authenticated session and conversation
-    runtime_metadata = {
-        "user_id": str(current_user.id),
-        "project_id": str(conversation.project_id) if conversation.project_id is not None else None,
-        "conversation_id": str(conversation_id),
-    }
-
     # Resolve authoritative workspace for the conversation's project and user
     resolved_workspace = await workspace_resolution.resolve_workspace(
         user_id=current_user.id,
         project_id=conversation.project_id,
+    )
+
+    execution_context = ExecutionContext(
+        user_id=current_user.id,
+        project_id=conversation.project_id,
+        conversation_id=conversation_id,
+        run_id=str(conversation_id),
+        workspace_id=resolved_workspace.workspace_id,
     )
 
     # Generate streaming response
@@ -318,7 +320,7 @@ async def send_message(
             run_state = await agent_runtime.run(
                 messages=llm_messages,
                 workspace=resolved_workspace,
-                metadata=runtime_metadata,
+                execution_context=execution_context,
                 config={"configurable": {"thread_id": str(conversation_id)}},
             )
 

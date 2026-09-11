@@ -78,4 +78,3 @@ sqlalchemy[mypy]
 ipython
 ipdb
 watchdog
-tavily-python

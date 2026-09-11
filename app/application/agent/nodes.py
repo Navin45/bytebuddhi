@@ -32,7 +32,7 @@ class AgentNodes:
 
         Args:
             llm_provider: LLM provider for generating responses
-            search_service: Optional Tavily search service for web searches
+            search_service: Unused legacy argument retained for call-site compatibility
         """
         self.llm = llm_provider
         self.search_service = search_service
@@ -106,48 +106,16 @@ Respond with only the category name."""
         return {"retrieved_context": retrieved_context}
 
     async def web_search(self, state: AgentState) -> dict:
-        """Perform web search using Tavily.
+        """Legacy graph node. Web research is not performed here.
 
-        This node uses the Tavily API to search the web for information
-        relevant to the user's query.
-
-        Args:
-            state: Current agent state
-
-        Returns:
-            Dict: Updated state with search results
+        Production web research is the `web_research` tool on AgentRuntime.
+        This prototype node does not call network search providers.
         """
-        logger.info("Performing web search")
-
-        if not self.search_service:
-            logger.warning("Web search requested but Tavily service not configured")
-            return {
-                "search_results": None,
-                "error": "Web search is not configured",
-            }
-
-        user_query = state["user_query"]
-
-        try:
-            # Perform search
-            search_response = await self.search_service.search(
-                query=user_query,
-                include_answer=True,
-            )
-
-            logger.info(
-                "Web search completed",
-                num_results=len(search_response.get("results", [])),
-            )
-
-            return {"search_results": search_response}
-
-        except Exception as e:
-            logger.error("Web search failed", error=str(e))
-            return {
-                "search_results": None,
-                "error": f"Web search failed: {e!s}",
-            }
+        logger.warning("Legacy graph web_search node does not perform network search")
+        return {
+            "search_results": None,
+            "error": "Web research is available via the web_research tool on AgentRuntime, not this legacy graph.",
+        }
 
     async def generate_response(self, state: AgentState) -> dict:
         """Generate the final response to the user.
@@ -166,7 +134,6 @@ Respond with only the category name."""
         user_query = state["user_query"]
         intent = state.get("intent", IntentType.GENERAL_CHAT)
         context = state.get("retrieved_context", [])
-        search_results = state.get("search_results")
 
         # Build response prompt based on intent
         if intent == IntentType.CODE_GENERATION:
@@ -190,11 +157,6 @@ Respond with only the category name."""
             context_text = "\n\nRelevant code context:\n" + "\n\n".join(
                 [f"```\n{chunk.get('content', '')}\n```" for chunk in context]
             )
-
-        # Add search results if available
-        if search_results and self.search_service:
-            search_context = self.search_service.format_results_for_context(search_results)
-            context_text += f"\n\n{search_context}"
 
         # Build messages
         messages = [

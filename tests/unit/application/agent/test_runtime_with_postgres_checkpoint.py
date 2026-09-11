@@ -7,6 +7,7 @@ from app.application.agent.types import AgentStatus
 from app.application.ports.output.llm.model_gateway import ModelGateway, ModelResponse
 from app.application.tools.registry import ToolRegistry
 from app.infrastructure.persistence.postgres.checkpoint_saver import CheckpointModel, PostgresCheckpointSaver
+from tests.helpers.execution import trusted_execution_context
 
 
 class MockModelGateway(ModelGateway):
@@ -64,6 +65,7 @@ async def test_agent_runtime_with_postgres_checkpoint_saver():
     result = await runtime.run(
         messages=[{"role": "user", "content": "hello"}],
         config=thread_config,
+        execution_context=trusted_execution_context(run_id="run_pg_checkpoint"),
     )
 
     assert result.status == AgentStatus.COMPLETED
