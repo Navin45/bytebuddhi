@@ -70,3 +70,20 @@ def test_api_routes_do_not_own_runtime_execution() -> None:
             }:
                 violations.append(f"{py_file.name} imports {imp}")
     assert not violations, "API runtime-ownership violations:\n" + "\n".join(violations)
+
+
+def test_cli_adapters_do_not_import_agent_runtime() -> None:
+    """CLI command modules may not own AgentRuntime; bootstrap is the composition root."""
+    cli_dir = Path("app/interfaces/cli").resolve()
+    violations = []
+    for py_file in cli_dir.rglob("*.py"):
+        if py_file.name == "bootstrap.py":
+            continue
+        imports = _get_imports(py_file)
+        for imp in imports:
+            if imp in {
+                "app.application.agent.runtime",
+                "app.application.agent.orchestrator",
+            }:
+                violations.append(f"{py_file.name} imports {imp}")
+    assert not violations, "CLI runtime-ownership violations:\n" + "\n".join(violations)

@@ -12,8 +12,8 @@ ByteBuddhi strictly enforces dependency inversion: **dependencies only point inw
 
 ```text
 ┌────────────────────────────────────────────────────────┐
-│ Interfaces (app/interfaces/api)                        │
-│   Routes, Schemas, Middleware, SSE Stream Handler      │
+│ Interfaces (app/interfaces/api, app/interfaces/cli)    │
+│   Routes, CLI argparse adapter, Schemas, Middleware    │
 │   └──────────────────────────┬─────────────────────────┘
 │                              │ depends on
 ┌──────────────────────────────▼─────────────────────────┐
@@ -291,3 +291,4 @@ query → WebSearchProvider.search
 6. **Application Authorization**: Cross-user/project access is denied in application services and repositories. Database RLS using `auth.uid()` is not used; claiming PostgreSQL-enforced per-user isolation would be false.
 7. **Managed Workspace Guard**: In `WORKSPACE_MODE=managed`, resolved workspace paths must remain inside `WORKSPACE_ROOT` after canonicalization (symlink and traversal escapes denied).
 8. **Execution-scoped artifacts**: Tool/command archives require trusted `ExecutionContext`. Missing context is an error, not a write to `global/`.
+9. **CLI adapter**: The CLI does not construct `AgentRuntime` or authorize workspaces itself. Identity comes from `--user-id` / `BYTEBUDDHI_USER_ID` plus `UserRepository`. See [CLI](cli.md).

@@ -72,6 +72,20 @@ async def test_execute_task_use_case_standalone(tmp_path) -> None:
     assert "user_id" not in (run_kwargs.get("metadata") or {})
 
 
+def test_cli_package_entry_is_declared() -> None:
+    text = Path("pyproject.toml").read_text(encoding="utf-8")
+    assert "bytebuddhi = " in text
+    assert "app.interfaces.cli.main:main" in text
+
+
+def test_api_and_cli_share_runtime_composition() -> None:
+    api = Path("app/interfaces/api/dependencies.py").read_text(encoding="utf-8")
+    assert "assemble_agent_runtime" in api
+    composition = Path("app/interfaces/composition.py").read_text(encoding="utf-8")
+    assert "def assemble_agent_runtime" in composition
+    assert "def compose_application_graph" in composition
+
+
 def test_docker_uses_supported_python() -> None:
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
     assert "python:3.13" in dockerfile

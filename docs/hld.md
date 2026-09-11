@@ -35,7 +35,13 @@ flowchart TB
     subgraph Clients["Client & Interface Tier"]
         REST_Client["REST API Client"]
         SSE_Client["SSE Streaming Client"]
-        CLI_Client["CLI / IDE Thin Clients"]
+        CLI_Client["CLI (app/interfaces/cli)"]
+    end
+
+    subgraph CLI_Container["CLI (app/interfaces/cli)"]
+        CliParser["argparse commands"]
+        CliApp["CliApp adapter"]
+        Composition["Shared composition root"]
     end
 
     subgraph API_Container["FastAPI Application Container (app/interfaces/api)"]
@@ -75,6 +81,11 @@ flowchart TB
     end
 
     Clients --> Router
+    REST_Client --> Router
+    CLI_Client --> CliParser
+    CliParser --> CliApp
+    CliApp --> Composition
+    Composition --> ExecuteTask["ExecuteTaskUseCase"]
     Router --> AuthMid
     AuthMid --> SSE
     AuthMid --> DI
@@ -109,13 +120,14 @@ flowchart TB
 Canonical execution path:
 
 ```text
-HTTP / future CLI / VS Code
-    → authentication and HTTP validation
+HTTP / CLI / VS Code
     → ExecuteTaskUseCase
     → trusted ExecutionContext
     → MultiAgentOrchestrator (when delegating) / AgentRuntime
     → ToolExecutor / ToolPolicyEngine
 ```
+
+The CLI uses `app/interfaces/composition.py` with the API. It does not call FastAPI for local execution. See [CLI](cli.md).
 
 Authorization is application-owned (JWT + project ownership + workspace policy). PostgreSQL `auth.uid()` RLS is not wired and is not the isolation boundary.
 
@@ -167,6 +179,13 @@ Workspace modes: `local` for development/CLI user-selected roots; `managed` (req
 - **Capability path**: Agents invoke `web_research` through `ToolRegistry` → `ToolPolicyEngine` → `ToolExecutor` → `WebResearchService`. There is no runtime special case and no LangGraph-node search provider.
 - **Ports**: Application-owned `WebSearchProvider`, `WebFetcher`, and `WebRenderer`. The first search adapter is a DuckDuckGo HTML client; it is not part of the application contract.
 - **Safety**: Scheme allowlist, DNS/IP classification, per-redirect SSRF checks, streaming byte limits, bounded concurrency/timeouts, project-scoped `ArtifactStore` writes, and an explicit untrusted-content notice. See [Web Research](web_research.md).
+
+### 4.9 CLI
+
+- **Adapter**: `app/interfaces/cli` parses arguments, resolves a trusted user UUID, and calls `ExecuteTaskUseCase`.
+- **Composition**: Shared `assemble_agent_runtime` / `compose_application_graph`. Command modules do not construct `AgentRuntime`.
+- **Identity**: `--user-id` or `BYTEBUDDHI_USER_ID` looked up in `UserRepository`. Prompt text cannot set identity.
+- **Workspace**: `--project` or explicit `--cwd` (local mode only, matching owned `local_path`). Never a silent `.` fallback.
 
 ---
 

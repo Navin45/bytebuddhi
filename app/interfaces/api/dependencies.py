@@ -501,87 +501,22 @@ async def get_agent_runtime(
     meter: Any = Depends(get_telemetry_meter),
 ) -> Any:
     """Get AgentRuntime configured with Phase 1-5 capabilities and Postgres checkpoint saver."""
-    from app.application.agent.context import ContextEngine
-    from app.application.agent.runtime import AgentRuntime
-    from app.application.tools.builtin.code_tools import create_code_tools
-    from app.application.tools.builtin.command_tools import create_command_tool
-    from app.application.tools.builtin.echo_tool import register_echo_tool
-    from app.application.tools.builtin.filesystem_tools import create_filesystem_tools
-    from app.application.tools.executor import ToolExecutor
-    from app.application.tools.registry import ToolRegistry
-    from app.infrastructure.persistence.postgres.checkpoint_saver import PostgresCheckpointSaver
+    from app.interfaces.composition import assemble_agent_runtime
 
-    registry = ToolRegistry()
-    register_echo_tool(registry)
-
-    for defn, handler in create_filesystem_tools():
-        registry.register(defn, handler)
-
-    cmd_def, cmd_handler = create_command_tool(command_executor)
-    registry.register(cmd_def, cmd_handler)
-
-    for defn, handler in create_code_tools(code_intelligence_service, default_workspace=workspace):
-        registry.register(defn, handler)
-
-    # Register GitHub connector capabilities
-    github_connector.register_capabilities(registry)
-
-    # Register web research capability (provider-agnostic application service)
-    from app.application.tools.builtin.web_research import create_web_research_tool
-    from app.infrastructure.config.settings import settings as app_settings
-    from app.infrastructure.web.lifecycle import get_web_research_resources
-
-    web_resources = get_web_research_resources(
-        settings=app_settings,
-        artifact_store=artifact_store,
-        tracer=tracer,
-        meter=meter,
-    )
-    web_def, web_handler = create_web_research_tool(web_resources.service)
-    registry.register(web_def, web_handler)
-
-    # Wire registry into policy engine for risk & approval validation
-    tool_policy_engine.registry = registry
-
-    tool_executor = ToolExecutor(
-        registry,
-        policy_engine=tool_policy_engine,
-        artifact_store=artifact_store,
-        tracer=tracer,
-        meter=meter,
-    )
-    context_engine = ContextEngine()
-    checkpointer = PostgresCheckpointSaver(db)
-
-    runtime = AgentRuntime(
+    return assemble_agent_runtime(
+        db,
         model_gateway=model_gateway,
-        tool_registry=registry,
-        context_engine=context_engine,
-        tool_executor=tool_executor,
-        checkpointer=checkpointer,
         workspace=workspace,
+        command_executor=command_executor,
+        tool_policy_engine=tool_policy_engine,
         memory_orchestrator=memory_orchestrator,
-        tracer=tracer,
-        meter=meter,
-    )
-
-    # Register multi-agent delegation capability
-    from app.application.agent.orchestrator import MultiAgentOrchestrator
-    from app.application.agent.registry import create_default_registry
-    from app.application.tools.builtin.delegation_tools import create_delegation_tool
-
-    orchestrator = MultiAgentOrchestrator(
-        agent_runtime=runtime,
-        agent_registry=create_default_registry(),
+        code_intelligence_service=code_intelligence_service,
+        github_connector=github_connector,
+        mcp_manager=mcp_manager,
         artifact_store=artifact_store,
-        policy_engine=tool_policy_engine,
         tracer=tracer,
         meter=meter,
     )
-    del_def, del_handler = create_delegation_tool(orchestrator)
-    registry.register(del_def, del_handler)
-    runtime.orchestrator = orchestrator
-    return runtime
 
 
 def get_agent_registry() -> Any:

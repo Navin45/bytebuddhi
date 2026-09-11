@@ -16,7 +16,8 @@ ByteBuddhi is a production-grade AI coding and multi-agent execution platform bu
 
 ```text
                                  Client Layer
-                 (REST API / SSE Streaming / Future CLI & IDE)
+                 (REST API / SSE Streaming / CLI)
+                                      │
                                       │
                                       ▼
                         ┌───────────────────────────┐
@@ -102,7 +103,8 @@ bytebuddhi/
 │   │   ├── persistence/          # PostgreSQL repositories, pgvector, SQLite
 │   │   └── storage/              # LocalArtifactStore with directory confinement
 │   └── interfaces/               # Primary adapters & presentation
-│       └── api/                  # FastAPI routes, schemas, middleware, SSE
+│       ├── api/                  # FastAPI routes, schemas, middleware, SSE
+│       └── cli/                  # argparse adapter over ExecuteTaskUseCase
 ├── tests/                        # Comprehensive test suite (264+ tests)
 │   ├── unit/                     # Domain, application, and infrastructure unit tests
 │   ├── integration/              # End-to-end multi-agent, memory, OTel flows
@@ -204,6 +206,18 @@ uv run uvicorn app.interfaces.api.main:app --host 0.0.0.0 --port 8000 --reload
 - Interactive OpenAPI Docs: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/api/v1/health`
 
+### 6. CLI
+
+```bash
+uv run bytebuddhi --help
+uv run bytebuddhi --version
+uv run bytebuddhi run --user-id <uuid> --project <uuid> "Explain this repository"
+uv run bytebuddhi run --json --quiet "Summarize failing tests" > result.json
+uv run bytebuddhi chat --user-id <uuid>
+```
+
+The CLI calls `ExecuteTaskUseCase` in-process (no localhost HTTP hop). See [CLI](docs/cli.md) for identity, workspace selection, output modes, and exit codes.
+
 ---
 
 ## Verification & Quality Gate
@@ -221,7 +235,7 @@ uv run ruff check .
 uv run ruff format --check .
 
 # Static type checking (Mypy)
-uv run mypy app/domain/models/observability.py app/application/ports/output/observability/ app/infrastructure/observability/
+uv run mypy app/
 ```
 
 ---
@@ -264,7 +278,7 @@ Detailed production-grade architectural and design specifications are maintained
 
 - **[High-Level Design (HLD)](docs/hld.md)**: System vision, C4 container models, subsystem breakdown, technology stack rationale, and non-functional requirements.
 - **[Low-Level Design (LLD)](docs/lld.md)**: Class contracts, hexagonal layer ports, state machine transitions, priority token budgeting algorithm, and concurrency models.
-- **[Web Research](docs/web_research.md)**: Provider-agnostic search, SSRF-safe fetch, HTML extraction, optional Playwright fallback, ArtifactStore integration, and security model.
+- **[CLI](docs/cli.md)**: Terminal adapter, commands, identity, workspace selection, JSON/CI usage, exit codes, and security boundary.
 - **Architecture Flowcharts (Mermaid)**:
   - [`docs/system_architecture.mermaid`](docs/system_architecture.mermaid): C4 container & component topology.
   - [`docs/agent_runtime_flow.mermaid`](docs/agent_runtime_flow.mermaid): Single-agent reasoning and tool execution loop sequence.
@@ -279,7 +293,7 @@ Detailed production-grade architectural and design specifications are maintained
 - **Command Authorization**: Modifying, network-accessing, and destructive OS commands are gated by policy engines requiring explicit caller permissions.
 - **Privacy by Construction**: Automated redaction sanitizes API keys, bearer tokens, passwords, and private identifiers before any telemetry span or metric is emitted.
 - **Strict Data Bounding**: Outputs exceeding 6,000 characters are archived to `ArtifactStore` rather than bloating LLM contexts or metric backends.
-- **Web Research SSRF**: Public web fetch is scheme-limited, DNS/IP classified, redirect-validated, and byte-bounded. External page text is untrusted data.
+- **CLI does not bypass policy**: `bytebuddhi` is an interface over `ExecuteTaskUseCase`. It does not relax workspace, tool, artifact, or identity checks.
 
 ---
 
