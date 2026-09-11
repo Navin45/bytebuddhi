@@ -5,7 +5,6 @@ from app.application.agent.nodes import AgentNodes
 from app.application.agent.runtime import AgentRuntime, create_agent_loop_graph
 from app.application.agent.state import AgentLoopState, AgentRunState, AgentState, IntentType
 from app.application.agent.types import AgentStatus, TokenUsage
-from app.infrastructure.external.tavily_search import TavilySearchService
 
 __all__ = [
     "AgentRuntime",
@@ -23,5 +22,4 @@ __all__ = [
     "AgentNodes",
     "AgentState",
     "IntentType",
-    "TavilySearchService",
 ]

@@ -59,5 +59,6 @@ async def test_tool_executor_policy_denies_tool_call(workspace: Workspace):
 
     assert result.is_error
     assert "Policy authorization failed" in result.content
+    assert result.error_details is not None
     assert result.error_details["error"] == "ToolAuthorizationError"
     assert result.error_details["reason"] == "Restricted by security policy"

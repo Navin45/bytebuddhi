@@ -15,7 +15,11 @@ from app.infrastructure.observability.otel_meter import (
     OpenTelemetryMeter,
     OpenTelemetryUpDownCounter,
 )
-from app.infrastructure.observability.otel_provider import setup_telemetry
+from app.infrastructure.observability.otel_provider import (
+    get_meter,
+    get_tracer,
+    setup_telemetry,
+)
 from app.infrastructure.observability.otel_tracer import (
     OpenTelemetrySpan,
     OpenTelemetrySpanContext,
@@ -37,5 +41,7 @@ __all__ = [
     "OpenTelemetrySpanContext",
     "OpenTelemetryTracer",
     "OpenTelemetryUpDownCounter",
+    "get_meter",
+    "get_tracer",
     "setup_telemetry",
 ]

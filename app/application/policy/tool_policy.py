@@ -1,16 +1,16 @@
 """Tool authorization engine and policy boundary."""
 
 import contextlib
-from typing import Any
 
 from app.application.policy.command_policy import CommandPolicy
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.observability.meter import Counter, Meter
+from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import Tracer
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import RiskLevel, ToolCall
+from app.application.tools.registry import ToolRegistry
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
-from app.infrastructure.config.logger import get_logger
-from app.infrastructure.observability.noop import NoOpMeter, NoOpTracer
 
 logger = get_logger(__name__)
 
@@ -21,7 +21,7 @@ class ToolPolicyEngine:
     def __init__(
         self,
         command_policy: CommandPolicy | None = None,
-        registry: Any | None = None,
+        registry: ToolRegistry | None = None,
         tracer: Tracer | None = None,
         meter: Meter | None = None,
     ):

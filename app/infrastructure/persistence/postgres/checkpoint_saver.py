@@ -18,9 +18,9 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     CheckpointTuple,
 )
-from sqlalchemy import Column, DateTime, String, Text, desc, select
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import DateTime, String, Text, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.config.logger import get_logger
 from app.infrastructure.persistence.postgres.database import Base
@@ -46,12 +46,12 @@ class CheckpointModel(Base):
 
     __tablename__ = "agent_checkpoints"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    thread_id = Column(String(255), nullable=False, index=True)
-    checkpoint_id = Column(String(255), nullable=False, unique=True)
-    parent_checkpoint_id = Column(String(255), nullable=True)
-    checkpoint_data = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    id: Mapped[str] = mapped_column(String(255), primary_key=True, default=lambda: str(uuid4()))
+    thread_id: Mapped[str] = mapped_column(String(255), index=True)
+    checkpoint_id: Mapped[str] = mapped_column(String(255), unique=True)
+    parent_checkpoint_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    checkpoint_data: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class PostgresCheckpointSaver(BaseCheckpointSaver):
@@ -125,7 +125,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             },
             checkpoint=checkpoint,
             metadata=metadata,
-            parent_config=parent_config,
+            parent_config=parent_config,  # type: ignore[arg-type]
             pending_writes=[],
         )
 

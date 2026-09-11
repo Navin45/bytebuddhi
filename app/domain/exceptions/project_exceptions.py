@@ -20,3 +20,10 @@ class ProjectIndexingException(DomainException):
 
     def __init__(self, message: str):
         super().__init__(f"Project indexing failed: {message}")
+
+
+class ProjectOwnershipException(DomainException):
+    """Raised when an operation attempts to access a project not owned by the user."""
+
+    def __init__(self, project_id: str, user_id: str):
+        super().__init__(f"User {user_id} is not authorized for project {project_id}")

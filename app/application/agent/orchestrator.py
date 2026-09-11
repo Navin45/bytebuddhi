@@ -11,11 +11,13 @@ from app.application.agent.registry import AgentRegistry
 from app.application.agent.runtime import AgentRuntime
 from app.application.agent.types import AgentStatus, TokenUsage
 from app.application.policy.tool_policy import ToolPolicyEngine
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.observability.context import (
     CorrelationContext,
     with_correlation_context,
 )
 from app.application.ports.output.observability.meter import Meter
+from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
 from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.application.tools.context import ToolExecutionContext
@@ -31,8 +33,6 @@ from app.domain.models.agent import (
     TaskExecutionStatus,
 )
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
-from app.infrastructure.config.logger import get_logger
-from app.infrastructure.observability.noop import NoOpMeter, NoOpTracer
 
 logger = get_logger(__name__)
 

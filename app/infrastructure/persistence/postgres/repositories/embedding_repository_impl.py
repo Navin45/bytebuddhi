@@ -72,7 +72,7 @@ class EmbeddingRepositoryImpl(EmbeddingRepository):
         """Delete all embeddings for a project."""
         result = await self.session.execute(delete(EmbeddingModel).where(EmbeddingModel.project_id == project_id))
         await self.session.flush()
-        return result.rowcount > 0
+        return bool(getattr(result, "rowcount", 0) > 0)
 
     @staticmethod
     def _to_domain(model: EmbeddingModel) -> Embedding:

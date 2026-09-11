@@ -7,12 +7,12 @@ from app.application.ports.output.execution.process_manager import (
     ProcessManager,
     ProcessResult,
 )
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.application.tools.context import ToolExecutionContext
 from app.domain.exceptions.workspace_exceptions import CommandBlockedError
 from app.domain.models.environment_policy import EnvironmentPolicy
 from app.domain.models.workspace import Workspace
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from app.domain.models.workspace import Workspace
 
 
 @pytest.fixture
-def temp_workspace() -> Workspace:
+def temp_workspace() -> Generator[Workspace]:
     """Create a temporary directory and workspace for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         ws = Workspace.create(root_path=tmpdir, workspace_id="test_ws")

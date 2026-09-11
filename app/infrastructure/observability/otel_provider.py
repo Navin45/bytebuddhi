@@ -120,3 +120,27 @@ def setup_telemetry(settings: Settings) -> tuple[Tracer, Meter]:
     except Exception as e:
         logger.error("Failed to initialize OpenTelemetry SDK, degrading to NoOp safely", error=str(e))
         return NoOpTracer(), NoOpMeter()
+
+
+_global_tracer: Tracer | None = None
+_global_meter: Meter | None = None
+
+
+def get_tracer() -> Tracer:
+    """Get or initialize global tracer."""
+    global _global_tracer, _global_meter
+    if _global_tracer is None:
+        from app.infrastructure.config.settings import settings
+
+        _global_tracer, _global_meter = setup_telemetry(settings)
+    return _global_tracer
+
+
+def get_meter() -> Meter:
+    """Get or initialize global meter."""
+    global _global_tracer, _global_meter
+    if _global_meter is None:
+        from app.infrastructure.config.settings import settings
+
+        _global_tracer, _global_meter = setup_telemetry(settings)
+    return _global_meter

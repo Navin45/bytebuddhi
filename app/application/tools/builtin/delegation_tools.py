@@ -4,10 +4,10 @@ from typing import Any
 from uuid import uuid4
 
 from app.application.agent.orchestrator import MultiAgentOrchestrator
+from app.application.ports.output.logger import get_logger
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import CapabilityType, RiskLevel, ToolDefinition
 from app.domain.models.agent import AgentTask, TaskExecutionStatus
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

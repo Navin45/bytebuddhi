@@ -52,6 +52,7 @@ def test_otel_tracer_basic_span(otel_tracer: OpenTelemetryTracer, memory_exporte
     assert len(spans) == 1
     finished = spans[0]
     assert finished.name == "test.operation"
+    assert finished.attributes is not None
     assert finished.attributes["bytebuddhi.test"] == "value1"
     assert finished.attributes["extra.key"] == "value2"
     assert len(finished.events) == 1
@@ -74,6 +75,7 @@ def test_otel_tracer_nested_spans(otel_tracer: OpenTelemetryTracer, memory_expor
     child_span = next(s for s in spans if s.name == "child.span")
     parent_span = next(s for s in spans if s.name == "parent.span")
 
+    assert child_span.parent is not None
     assert child_span.parent.span_id == parent_span.context.span_id
     assert child_span.context.trace_id == parent_span.context.trace_id
 

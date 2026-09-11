@@ -151,4 +151,16 @@ class IntentType:
     WEB_SEARCH = "web_search"
     CODE_DEBUG = "debugging"
     CODE_REFACTOR = "refactoring"
-    GENERAL_CHAT = "general_chat"
+
+    @classmethod
+    def all_intents(cls) -> set[str]:
+        """Return all valid intent type values."""
+        return {
+            cls.CODE_GENERATION,
+            cls.CODE_EXPLANATION,
+            cls.DEBUGGING,
+            cls.REFACTORING,
+            cls.DOCUMENTATION,
+            cls.GENERAL_CHAT,
+            cls.WEB_SEARCH,
+        }

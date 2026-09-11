@@ -47,7 +47,7 @@ class MessageRepositoryImpl(MessageRepository):
             role=message.role,
             content=message.content,
             created_at=message.created_at,
-            metadata=message.metadata,
+            extra_metadata=message.metadata,
             parent_message_id=message.parent_message_id,
             feedback=message.feedback,
         )
@@ -121,7 +121,7 @@ class MessageRepositoryImpl(MessageRepository):
 
         # Update mutable fields
         message_model.feedback = message.feedback
-        message_model.metadata = message.metadata
+        message_model.extra_metadata = message.metadata
 
         await self.session.flush()
         return self._to_domain(message_model)
@@ -162,7 +162,7 @@ class MessageRepositoryImpl(MessageRepository):
             role=model.role,
             content=model.content,
             created_at=model.created_at,
-            metadata=model.metadata,
+            metadata=model.extra_metadata,
             parent_message_id=model.parent_message_id,
             feedback=model.feedback,
         )

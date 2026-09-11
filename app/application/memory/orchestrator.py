@@ -13,8 +13,10 @@ from app.application.memory.ranking import (
     StandardMemoryRankingStrategy,
 )
 from app.application.ports.output.llm.llm_provider import LLMProvider
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.memory.memory_store import MemoryStore
 from app.application.ports.output.observability.meter import Counter, Histogram, Meter
+from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import Tracer
 from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.domain.models.memory import (
@@ -24,8 +26,6 @@ from app.domain.models.memory import (
     MemoryType,
 )
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
-from app.infrastructure.config.logger import get_logger
-from app.infrastructure.observability.noop import NoOpMeter, NoOpTracer
 
 logger = get_logger(__name__)
 

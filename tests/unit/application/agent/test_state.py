@@ -20,6 +20,7 @@ def test_agent_run_state_from_loop_state():
         "iteration": 2,
         "max_iterations": 10,
         "pending_tool_calls": [{"id": "c1", "name": "echo", "arguments": {"msg": "hi"}}],
+        "tool_calls": [{"id": "c1", "name": "echo", "arguments": {"msg": "hi"}}],
         "tool_results": [{"tool_call_id": "c1", "name": "echo", "content": "hi", "is_error": False}],
         "final_response": "hi back",
         "error": None,

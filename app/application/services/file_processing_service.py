@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from app.application.ports.output.llm.llm_provider import LLMProvider
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.repository.code_chunk_repository import (
     CodeChunkRepository,
 )
@@ -11,7 +12,6 @@ from app.application.ports.output.repository.embedding_repository import (
 )
 from app.domain.models.code_chunk import CodeChunk
 from app.domain.models.embedding import Embedding
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

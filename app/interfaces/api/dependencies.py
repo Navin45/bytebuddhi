@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.ports.output.cache.cache_service import CacheService
 from app.application.ports.output.llm.llm_provider import LLMProvider
 from app.application.ports.output.llm.model_gateway import ModelGateway
+from app.application.ports.output.observability.meter import Meter
+from app.application.ports.output.observability.tracer import Tracer
 from app.application.ports.output.repository.code_chunk_repository import (
     CodeChunkRepository,
 )
@@ -251,17 +253,17 @@ def get_workspace() -> Any:
     """Get active Workspace instance."""
     from app.domain.models.workspace import Workspace
 
-    return Workspace.create(root_path=".", workspace_id="default_workspace")
+    return Workspace.create(root_path="storage/workspaces/default", workspace_id="default_workspace")
 
 
-def get_telemetry_tracer() -> Any:
+def get_telemetry_tracer() -> Tracer:
     """Get global configured OpenTelemetry or NoOp tracer."""
     from app.infrastructure.observability import get_tracer
 
     return get_tracer()
 
 
-def get_telemetry_meter() -> Any:
+def get_telemetry_meter() -> Meter:
     """Get global configured OpenTelemetry or NoOp meter."""
     from app.infrastructure.observability import get_meter
 
@@ -571,4 +573,30 @@ def get_multi_agent_orchestrator(
         policy_engine=tool_policy_engine,
         tracer=tracer,
         meter=meter,
+    )
+
+
+def get_workspace_resolution_service(
+    project_repo: ProjectRepository = Depends(get_project_repository),
+) -> Any:
+    """Get authoritative WorkspaceResolutionService instance."""
+    from app.application.workspace.resolution_service import WorkspaceResolutionService
+
+    return WorkspaceResolutionService(project_repo=project_repo)
+
+
+async def get_execute_task_use_case(
+    workspace_resolution: Any = Depends(get_workspace_resolution_service),
+    agent_runtime: Any = Depends(get_agent_runtime),
+    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
+    message_repo: MessageRepository = Depends(get_message_repository),
+) -> Any:
+    """Get ExecuteTaskUseCase instance."""
+    from app.application.use_cases.agent.execute_task import ExecuteTaskUseCase
+
+    return ExecuteTaskUseCase(
+        workspace_resolution_service=workspace_resolution,
+        agent_runtime=agent_runtime,
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
     )

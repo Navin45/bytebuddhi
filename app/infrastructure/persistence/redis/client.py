@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 
 # Global Redis client instance
-redis_client: redis.Redis = None
+redis_client: redis.Redis | None = None
 
 
 async def get_redis_client() -> redis.Redis:

@@ -6,6 +6,7 @@ refresh tokens (long-lived).
 """
 
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from jose import JWTError, jwt
@@ -75,7 +76,7 @@ class JWTHandler:
             to_encode.update(additional_claims)
 
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
-        return encoded_jwt
+        return str(encoded_jwt)
 
     def create_refresh_token(self, user_id: UUID) -> str:
         """Create a refresh token for a user.
@@ -98,7 +99,7 @@ class JWTHandler:
         }
 
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
-        return encoded_jwt
+        return str(encoded_jwt)
 
     def verify_token(self, token: str, token_type: str = "access") -> UUID | None:
         """Verify and decode a JWT token.
@@ -136,7 +137,7 @@ class JWTHandler:
             logger.warning("Invalid user ID in token", error=str(e))
             return None
 
-    def decode_token(self, token: str) -> dict | None:
+    def decode_token(self, token: str) -> dict[str, Any] | None:
         """Decode a JWT token without verification.
 
         WARNING: This does not verify the token signature.
@@ -152,7 +153,7 @@ class JWTHandler:
             payload = jwt.decode(
                 token, self.secret_key, algorithms=[self.algorithm], options={"verify_signature": False}
             )
-            return payload
+            return dict(payload)
         except JWTError as e:
             logger.error("Token decoding failed", error=str(e))
             return None

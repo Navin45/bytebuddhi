@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -15,7 +17,7 @@ class MockModelGateway(ModelGateway):
     def __init__(self, responses: list[ModelResponse]):
         self.responses = list(responses)
         self.call_count = 0
-        self.recorded_calls = []
+        self.recorded_calls: list[dict[str, Any]] = []
 
     async def generate(self, messages, tools=None, temperature=0.7, max_tokens=None, **kwargs):
         self.recorded_calls.append({"messages": messages, "tools": tools})

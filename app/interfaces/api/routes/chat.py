@@ -15,6 +15,7 @@ from app.application.ports.output.repository.conversation_repository import (
     ConversationRepository,
 )
 from app.application.ports.output.repository.message_repository import MessageRepository
+from app.application.workspace.resolution_service import WorkspaceResolutionService
 from app.domain.models.conversation import Conversation
 from app.domain.models.message import Message
 from app.domain.models.user import User
@@ -23,6 +24,7 @@ from app.interfaces.api.dependencies import (
     get_agent_runtime,
     get_conversation_repository,
     get_message_repository,
+    get_workspace_resolution_service,
 )
 from app.interfaces.api.middleware import get_current_user
 from app.interfaces.api.schemas.chat_schema import (
@@ -245,6 +247,7 @@ async def send_message(
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
     agent_runtime: AgentRuntime = Depends(get_agent_runtime),
+    workspace_resolution: WorkspaceResolutionService = Depends(get_workspace_resolution_service),
 ):
     """Send a message in a conversation.
 
@@ -302,12 +305,19 @@ async def send_message(
         "conversation_id": str(conversation_id),
     }
 
+    # Resolve authoritative workspace for the conversation's project and user
+    resolved_workspace = await workspace_resolution.resolve_workspace(
+        user_id=current_user.id,
+        project_id=conversation.project_id,
+    )
+
     # Generate streaming response
     async def generate_response():
         """Generate and stream AI response using AgentRuntime."""
         try:
             run_state = await agent_runtime.run(
                 messages=llm_messages,
+                workspace=resolved_workspace,
                 metadata=runtime_metadata,
                 config={"configurable": {"thread_id": str(conversation_id)}},
             )

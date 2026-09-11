@@ -9,6 +9,7 @@ from typing import Any
 
 from app.application.ports.output.code.code_index import CodeIndex
 from app.application.ports.output.code.code_parser import CodeParser
+from app.application.ports.output.logger import get_logger
 from app.domain.exceptions.workspace_exceptions import (
     FileNotFoundWorkspaceError,
 )
@@ -22,7 +23,6 @@ from app.domain.models.code_intelligence import (
 )
 from app.domain.models.workspace import Workspace
 from app.domain.value_objects.language import Language, ProgrammingLanguage
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

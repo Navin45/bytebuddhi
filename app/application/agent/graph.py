@@ -4,13 +4,17 @@ This module builds the LangGraph agent by connecting nodes into
 a directed graph that defines the agent's workflow.
 """
 
+from typing import Any, cast
+
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from app.application.agent.nodes import AgentNodes
 from app.application.agent.state import AgentState, IntentType
 from app.application.ports.output.llm.llm_provider import LLMProvider
-from app.infrastructure.config.logger import get_logger
+from app.application.ports.output.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -49,7 +53,7 @@ def create_agent_graph(
     llm_provider: LLMProvider,
     checkpoint_saver: BaseCheckpointSaver | None = None,
     search_service=None,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Create the ByteBuddhi agent graph.
 
     This function constructs the LangGraph agent by defining nodes
@@ -112,12 +116,12 @@ def create_agent_graph(
     workflow.add_edge("handle_error", END)
 
     # Compile graph with optional checkpoint saver
-    compile_kwargs = {}
+    compile_kwargs: dict[str, Any] = {}
     if checkpoint_saver:
         compile_kwargs["checkpointer"] = checkpoint_saver
         logger.info("Agent graph compiled with checkpoint persistence")
 
-    graph = workflow.compile(**compile_kwargs)
+    graph = workflow.compile(**compile_kwargs)  # type: ignore[arg-type]
 
     logger.info("Agent graph created successfully")
 
@@ -158,9 +162,9 @@ class ByteBuddhiAgent:
     async def process_query(
         self,
         user_query: str,
-        project_id: str = None,
-        conversation_history: list = None,
-        thread_id: str = None,
+        project_id: str | None = None,
+        conversation_history: list[Any] | None = None,
+        thread_id: str | None = None,
     ) -> AgentState:
         """Process a user query through the agent.
 
@@ -190,15 +194,15 @@ class ByteBuddhiAgent:
         }
 
         # Build config with optional thread_id for checkpoints
-        config = {}
+        runnable_config: RunnableConfig | None = None
         if thread_id and self.checkpoint_saver:
-            config["configurable"] = {"thread_id": thread_id}
+            runnable_config = {"configurable": {"thread_id": thread_id}}
             logger.info("Using checkpoint persistence", thread_id=thread_id)
 
         try:
             # Run agent
-            final_state = await self.graph.ainvoke(initial_state, config=config)
-            return final_state
+            final_state = await self.graph.ainvoke(initial_state, config=runnable_config)
+            return cast(AgentState, final_state)
 
         except Exception as e:
             logger.error("Agent execution failed", error=str(e))
@@ -209,7 +213,7 @@ class ByteBuddhiAgent:
 
             nodes = AgentNodes(self.llm_provider)
             error_result = await nodes.handle_error(error_state)
-            error_state.update(error_result)
+            error_state.update(cast(AgentState, error_result))
 
             return error_state
 

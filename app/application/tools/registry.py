@@ -3,8 +3,8 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.application.ports.output.logger import get_logger
 from app.application.tools.definition import CapabilityType, RiskLevel, ToolDefinition
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,4 +1,4 @@
-"""Unit tests for OpenTelemetryMeter and NoOpMeter implementations."""
+from typing import Any, cast
 
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider
@@ -49,10 +49,11 @@ def test_otel_meter_counter(otel_meter: OpenTelemetryMeter, metric_reader: InMem
     metrics = scope_metrics[0].metrics
     matched = [m for m in metrics if m.name == "bytebuddhi.test_runs_total"]
     assert len(matched) == 1
-    data_points = list(matched[0].data.data_points)
+    data_points = list(cast(Any, matched[0].data).data_points)
     assert len(data_points) == 1
-    assert data_points[0].value == 3
-    assert data_points[0].attributes["agent_role"] == "coder"
+    dp = cast(Any, data_points[0])
+    assert dp.value == 3
+    assert dp.attributes["agent_role"] == "coder"
 
 
 def test_otel_meter_histogram(otel_meter: OpenTelemetryMeter, metric_reader: InMemoryMetricReader) -> None:
@@ -66,7 +67,8 @@ def test_otel_meter_histogram(otel_meter: OpenTelemetryMeter, metric_reader: InM
     metrics = metric_data.resource_metrics[0].scope_metrics[0].metrics
     matched = [m for m in metrics if m.name == "bytebuddhi.test_duration"]
     assert len(matched) == 1
-    data_points = list(matched[0].data.data_points)
+    data_points = list(cast(Any, matched[0].data).data_points)
     assert len(data_points) == 1
-    assert data_points[0].count == 2
-    assert data_points[0].sum == pytest.approx(0.375)
+    dp = cast(Any, data_points[0])
+    assert dp.count == 2
+    assert dp.sum == pytest.approx(0.375)

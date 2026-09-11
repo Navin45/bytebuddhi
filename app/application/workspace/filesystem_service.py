@@ -5,13 +5,13 @@ from typing import Any
 import aiofiles
 import aiofiles.os
 
+from app.application.ports.output.logger import get_logger
 from app.domain.exceptions.workspace_exceptions import (
     FileAlreadyExistsWorkspaceError,
     FileNotFoundWorkspaceError,
     WorkspaceBoundaryError,
 )
 from app.domain.models.workspace import Workspace
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,4 +1,5 @@
 import json
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,14 +18,17 @@ async def test_checkpoint_saver_aput():
     saver = PostgresCheckpointSaver(mock_session)
 
     config = {"configurable": {"thread_id": "t-123", "checkpoint_id": "c-parent"}}
-    checkpoint: Checkpoint = {
-        "v": 1,
-        "id": "c-456",
-        "ts": "2026-09-10T12:00:00Z",
-        "channel_values": {"msg": "hello"},
-        "channel_versions": {"msg": 1},
-        "versions_seen": {},
-    }
+    checkpoint: Checkpoint = cast(
+        Checkpoint,
+        {
+            "v": 1,
+            "id": "c-456",
+            "ts": "2026-09-10T12:00:00Z",
+            "channel_values": {"msg": "hello"},
+            "channel_versions": {"msg": 1},
+            "versions_seen": {},
+        },
+    )
     metadata = {"source": "input", "step": 1}
     new_versions = {"msg": 1}
 

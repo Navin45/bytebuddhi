@@ -5,12 +5,13 @@ the ByteBuddhi agent graph. Each node performs a specific task in the
 agent's workflow.
 """
 
+from typing import Any
+
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.application.agent.state import AgentState, IntentType
 from app.application.ports.output.llm.llm_provider import LLMProvider
-from app.infrastructure.config.logger import get_logger
-from app.infrastructure.external.tavily_search import TavilySearchService
+from app.application.ports.output.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,7 +26,7 @@ class AgentNodes:
     def __init__(
         self,
         llm_provider: LLMProvider,
-        search_service: TavilySearchService | None = None,
+        search_service: Any | None = None,
     ):
         """Initialize agent nodes with LLM provider and search service.
 
@@ -98,7 +99,7 @@ Respond with only the category name."""
         logger.info("Retrieving code context")
 
         # Placeholder: return empty context until vector store is implemented
-        retrieved_context = []
+        retrieved_context: list[dict[str, Any]] = []
 
         logger.info(f"Retrieved {len(retrieved_context)} code chunks")
 

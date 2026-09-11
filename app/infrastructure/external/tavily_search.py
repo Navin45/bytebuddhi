@@ -4,7 +4,7 @@ This module provides a service for performing web searches using the Tavily API.
 Tavily is optimized for AI applications and provides high-quality search results.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from tavily import TavilyClient
 
@@ -102,7 +102,7 @@ class TavilySearchService:
                 has_answer=bool(response.get("answer")),
             )
 
-            return response
+            return cast(dict[str, Any], response)
 
         except Exception as e:
             logger.error("Tavily search failed", error=str(e), query=query)

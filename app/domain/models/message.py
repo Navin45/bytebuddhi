@@ -1,5 +1,15 @@
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID, uuid4
+
+
+class MessageRole(StrEnum):
+    """Enumeration of message sender roles."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    TOOL = "tool"
 
 
 class Message:

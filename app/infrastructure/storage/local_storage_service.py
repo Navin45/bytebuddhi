@@ -84,7 +84,7 @@ class LocalFileStorageService(FileStorageService):
                 file_id=str(file_id),
                 size=len(content),
             )
-            return content
+            return str(content)
 
         except Exception as e:
             logger.error(

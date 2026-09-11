@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from app.interfaces.api.dependencies import (
     get_agent_runtime,
     get_conversation_repository,
     get_message_repository,
+    get_workspace_resolution_service,
 )
 from app.interfaces.api.main import app
 from app.interfaces.api.middleware import get_current_user
@@ -60,10 +62,14 @@ async def test_chat_endpoint_with_agent_runtime():
         tool_results=[ToolResult(tool_call_id="c1", name="echo", content="echo: hello")],
     )
 
+    mock_workspace_res = AsyncMock()
+    mock_workspace_res.resolve_workspace.return_value = Path("storage/workspaces/test")
+
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_conversation_repository] = lambda: mock_conv_repo
     app.dependency_overrides[get_message_repository] = lambda: mock_msg_repo
     app.dependency_overrides[get_agent_runtime] = lambda: mock_runtime
+    app.dependency_overrides[get_workspace_resolution_service] = lambda: mock_workspace_res
 
     try:
         transport = ASGITransport(app=app)

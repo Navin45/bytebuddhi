@@ -26,11 +26,11 @@ class LangSmithConfig:
         project_name: Project name for organizing traces
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize LangSmith configuration."""
-        self.enabled = False
+        self.enabled: bool = False
         self.client: Client | None = None
-        self.project_name = settings.langchain_project
+        self.project_name: str = str(settings.langchain_project)
 
         self._configure()
 

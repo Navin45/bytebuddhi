@@ -11,6 +11,10 @@ Verifies protection against Attacks A through H:
 - Attack H: Telemetry Failure Isolation (Crashing exporter/telemetry)
 """
 
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
+
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -56,6 +60,7 @@ def test_attack_a_secret_leakage_in_attributes(test_tracer: Tracer, memory_expor
     spans = memory_exporter.get_finished_spans()
     assert len(spans) == 1
     attrs = spans[0].attributes
+    assert attrs is not None
 
     # Verify secrets were redacted
     assert attrs["api_key"] == "[REDACTED]"
@@ -82,6 +87,7 @@ def test_attack_b_prompt_and_thought_leakage(test_tracer: Tracer, memory_exporte
 
     spans = memory_exporter.get_finished_spans()
     attrs = spans[0].attributes
+    assert attrs is not None
     assert user_prompt not in str(attrs)
     assert thought_chain not in str(attrs)
     assert SpanAttributes.AGENT_ROLE in attrs
@@ -89,7 +95,8 @@ def test_attack_b_prompt_and_thought_leakage(test_tracer: Tracer, memory_exporte
 
 def test_attack_c_tool_argument_and_output_leakage(test_tracer: Tracer, memory_exporter: InMemorySpanExporter) -> None:
     """Attack C: Verify raw tool arguments and execution outputs do not leak into span attributes."""
-    raw_tool_args = {"command": "cat /etc/shadow", "env": {"SECRET": "super_secret_val"}}
+    command_arg = "cat /etc/shadow"
+    secret_env_arg = "super_secret_val"
     raw_tool_output = "root:$6$xyz:18293:0:99999:7:::"
 
     # Tool executor spans must record tool name and risk level, but NOT raw args/outputs
@@ -104,8 +111,9 @@ def test_attack_c_tool_argument_and_output_leakage(test_tracer: Tracer, memory_e
 
     spans = memory_exporter.get_finished_spans()
     attrs = spans[0].attributes
-    assert raw_tool_args["command"] not in str(attrs)
-    assert raw_tool_args["env"]["SECRET"] not in str(attrs)
+    assert attrs is not None
+    assert command_arg not in str(attrs)
+    assert secret_env_arg not in str(attrs)
     assert raw_tool_output not in str(attrs)
     assert attrs[SpanAttributes.TOOL_NAME] == "run_command"
 
@@ -128,6 +136,7 @@ def test_attack_d_memory_and_artifact_content_leakage(
 
     spans = memory_exporter.get_finished_spans()
     attrs = spans[0].attributes
+    assert attrs is not None
     assert sensitive_memory not in str(attrs)
     assert sensitive_artifact not in str(attrs)
     assert attrs[SpanAttributes.MEMORY_SCOPE] == "user"
@@ -178,6 +187,7 @@ def test_attack_f_approval_and_identity_tampering(test_tracer: Tracer, memory_ex
 
     spans = memory_exporter.get_finished_spans()
     attrs = spans[0].attributes
+    assert attrs is not None
     assert attrs[SpanAttributes.TOOL_RISK] == "high"
     assert attrs[SpanAttributes.TOOL_APPROVAL_REQUIRED] is True
     assert attrs[SpanAttributes.TOOL_APPROVAL_STATUS] == "granted"
@@ -206,12 +216,22 @@ def test_attack_g_high_cardinality_dimension_explosion() -> None:
 def test_attack_h_telemetry_failure_isolation() -> None:
     """Attack H: Verify that catastrophic exporter/telemetry crashes do NOT crash business execution."""
 
-    class BrokenTracer(Tracer):
-        def start_as_current_span(self, name: str, attributes=None):
+    class BrokenTracer:
+        @contextmanager
+        def start_as_current_span(
+            self,
+            name: str,
+            parent: Any = None,
+            attributes: Any = None,
+        ) -> Generator[Any]:
             raise ConnectionError("OTLP endpoint unreachable / exporter dead")
+            yield
 
-        def start_span(self, name: str, attributes=None):
+        def start_span(self, name: str, parent: Any = None, attributes: Any = None) -> Any:
             raise ConnectionError("OTLP endpoint unreachable")
+
+        def get_current_span(self) -> Any:
+            return None
 
     tracer = BrokenTracer()
 

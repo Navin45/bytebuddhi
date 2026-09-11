@@ -82,3 +82,7 @@ class Project:
         if framework:
             self.framework = framework
         self.updated_at = datetime.utcnow()
+
+    def mark_updated(self) -> None:
+        """Mark the project as updated."""
+        self.updated_at = datetime.utcnow()

@@ -52,3 +52,7 @@ class Conversation:
         """Update conversation title."""
         self.title = title
         self.updated_at = datetime.utcnow()
+
+    def mark_updated(self) -> None:
+        """Mark the conversation as updated."""
+        self.updated_at = datetime.utcnow()

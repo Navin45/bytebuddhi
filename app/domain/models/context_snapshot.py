@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from app.application.agent.context import ModelContext
+from app.domain.models.context import ModelContext
 
 
 @dataclass

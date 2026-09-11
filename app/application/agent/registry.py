@@ -1,7 +1,7 @@
 """Application registry for managing trusted AgentDefinition specifications."""
 
+from app.application.ports.output.logger import get_logger
 from app.domain.models.agent import AgentDefinition, AgentRole
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

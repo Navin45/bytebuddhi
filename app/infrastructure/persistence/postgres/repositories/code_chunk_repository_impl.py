@@ -64,7 +64,7 @@ class CodeChunkRepositoryImpl(CodeChunkRepository):
         """Delete all code chunks for a file."""
         result = await self.session.execute(delete(CodeChunkModel).where(CodeChunkModel.file_id == file_id))
         await self.session.flush()
-        return result.rowcount > 0
+        return bool(getattr(result, "rowcount", 0) > 0)
 
     @staticmethod
     def _to_domain(model: CodeChunkModel) -> CodeChunk:

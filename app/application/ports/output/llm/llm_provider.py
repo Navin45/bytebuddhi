@@ -6,6 +6,8 @@ from typing import Any
 class LLMProvider(ABC):
     """Abstract LLM provider."""
 
+    model_name: str = ""
+
     @abstractmethod
     async def generate(
         self,

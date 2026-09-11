@@ -22,9 +22,9 @@ from app.application.ports.output.repository.project_repository import ProjectRe
 from app.application.ports.output.storage.file_storage_service import (
     FileStorageService,
 )
+from app.application.services.file_processing_service import FileProcessingService
 from app.domain.models.file import File
 from app.domain.models.user import User
-from app.domain.services.file_processing_service import FileProcessingService
 from app.infrastructure.config.logger import get_logger
 from app.infrastructure.config.settings import settings
 from app.interfaces.api.dependencies import (

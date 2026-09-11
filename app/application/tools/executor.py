@@ -2,18 +2,19 @@ import asyncio
 import inspect
 import json
 import time
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
+from app.application.policy.tool_policy import ToolPolicyEngine
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.observability.meter import Meter
+from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
 from app.application.ports.output.storage.artifact_store import ArtifactStore
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import ToolCall, ToolResult
 from app.application.tools.registry import ToolRegistry
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
-from app.infrastructure.config.logger import get_logger
-from app.infrastructure.observability.noop import NoOpMeter, NoOpTracer
 
 logger = get_logger(__name__)
 
@@ -24,7 +25,7 @@ class ToolExecutor:
     def __init__(
         self,
         registry: ToolRegistry,
-        policy_engine: Any | None = None,
+        policy_engine: ToolPolicyEngine | None = None,
         artifact_store: ArtifactStore | None = None,
         max_output_chars: int = 6000,
         tracer: Tracer | None = None,
@@ -117,10 +118,11 @@ class ToolExecutor:
         # Policy boundary check before running tool handler
         if self.policy_engine is not None:
             try:
-                if inspect.iscoroutinefunction(self.policy_engine.authorize_tool_call):
-                    allowed, reason = await self.policy_engine.authorize_tool_call(tool_call, context)
+                auth_res = self.policy_engine.authorize_tool_call(tool_call, context)
+                if inspect.isawaitable(auth_res):
+                    allowed, reason = await auth_res
                 else:
-                    allowed, reason = self.policy_engine.authorize_tool_call(tool_call, context)
+                    allowed, reason = cast(tuple[bool, str | None], auth_res)
 
                 if not allowed:
                     logger.warning(

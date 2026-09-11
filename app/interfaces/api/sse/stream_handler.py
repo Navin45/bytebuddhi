@@ -44,7 +44,7 @@ class SSEStreamHandler:
     @staticmethod
     async def stream_response(
         content_iterator: AsyncIterator[str],
-        metadata: dict[str, Any] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Stream LLM response as SSE events.
 

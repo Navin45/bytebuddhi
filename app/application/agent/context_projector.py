@@ -2,8 +2,8 @@
 
 from typing import Any
 
+from app.application.ports.output.logger import get_logger
 from app.domain.models.agent import AgentDefinition, AgentTask, MultiAgentConfig
-from app.infrastructure.config.logger import get_logger
 
 logger = get_logger(__name__)
 

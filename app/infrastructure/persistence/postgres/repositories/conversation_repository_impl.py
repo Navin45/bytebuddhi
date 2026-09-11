@@ -51,7 +51,7 @@ class ConversationRepositoryImpl(ConversationRepository):
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
             is_archived=conversation.is_archived,
-            metadata=conversation.metadata,
+            extra_metadata=conversation.metadata,
         )
         self.session.add(conversation_model)
         await self.session.flush()
@@ -110,7 +110,7 @@ class ConversationRepositoryImpl(ConversationRepository):
         conversation_model.title = conversation.title
         conversation_model.updated_at = conversation.updated_at
         conversation_model.is_archived = conversation.is_archived
-        conversation_model.metadata = conversation.metadata
+        conversation_model.extra_metadata = conversation.metadata
 
         await self.session.flush()
         return self._to_domain(conversation_model)
@@ -153,5 +153,5 @@ class ConversationRepositoryImpl(ConversationRepository):
             created_at=model.created_at,
             updated_at=model.updated_at,
             is_archived=model.is_archived,
-            metadata=model.metadata,
+            metadata=model.extra_metadata,
         )

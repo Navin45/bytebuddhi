@@ -22,8 +22,10 @@ from app.application.agent.state import AgentLoopState, AgentRunState
 from app.application.agent.types import AgentStatus
 from app.application.memory.orchestrator import MemoryOrchestrator
 from app.application.ports.output.llm.model_gateway import ModelGateway
+from app.application.ports.output.logger import get_logger
 from app.application.ports.output.observability.context import get_correlation_context
 from app.application.ports.output.observability.meter import Meter
+from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
 from app.application.tools.context import ToolExecutionContext
 from app.application.tools.definition import ToolCall
@@ -32,8 +34,6 @@ from app.application.tools.registry import ToolRegistry
 from app.domain.models.memory import ExecutionObservation, MemoryScope
 from app.domain.models.observability import MetricNames, SpanAttributes, SpanNames
 from app.domain.models.workspace import Workspace
-from app.infrastructure.config.logger import get_logger
-from app.infrastructure.observability.noop import NoOpMeter, NoOpTracer
 
 logger = get_logger(__name__)
 
