@@ -187,6 +187,13 @@ Workspace modes: `local` for development/CLI user-selected roots; `managed` (req
 - **Identity**: `--user-id` or `BYTEBUDDHI_USER_ID` looked up in `UserRepository`. Prompt text cannot set identity.
 - **Workspace**: `--project` or explicit `--cwd` (local mode only, matching owned `local_path`). Never a silent `.` fallback.
 
+### 4.10 VS Code extension
+
+- **Transport**: Authenticated HTTP API (`/api/v1/chat/...`, `/api/v1/agent/runs/{id}/cancel`). Not an embedded Python runtime.
+- **Identity**: JWT from `POST /api/v1/auth/login`, stored in VS Code SecretStorage.
+- **Cancellation**: Application `CancellationToken` registered per `run_id`. The extension requests cancel; it does not kill OS processes.
+- See [VS Code](vscode.md).
+
 ---
 
 ## 5. Technology Stack Rationale

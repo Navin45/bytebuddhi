@@ -85,6 +85,7 @@ async def test_chat_endpoint_with_agent_runtime():
             assert response.status_code == 200
             assert "text/event-stream" in response.headers["content-type"]
             body = response.text
+            assert "event: run_started" in body
             assert "event: tool_call" in body
             assert "echo" in body
             assert "event: content" in body
@@ -272,3 +273,49 @@ async def test_runtime_memory_scope_selection_from_metadata():
     scopes_passed_2 = mock_orch.retrieve_memories.call_args.kwargs["scopes"]
     assert (MemoryScope.USER, "user_A") in scopes_passed_2
     assert not any(scope_type == MemoryScope.PROJECT for scope_type, _ in scopes_passed_2)
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_requires_owning_user():
+    from app.application.runtime.cancellation import CancellationToken, get_run_cancellation_registry
+
+    owner = User(
+        id=uuid4(),
+        email="owner@bytebuddhi.com",
+        username="owner",
+        password_hash="hash",
+        created_at=None,
+        updated_at=None,
+    )
+    other = User(
+        id=uuid4(),
+        email="other@bytebuddhi.com",
+        username="other",
+        password_hash="hash",
+        created_at=None,
+        updated_at=None,
+    )
+    token = CancellationToken()
+    registry = get_run_cancellation_registry()
+    await registry.register("run_sec", owner.id, token)
+
+    app.dependency_overrides[get_current_user] = lambda: other
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            denied = await client.post("/api/v1/agent/runs/run_sec/cancel")
+            assert denied.status_code == 404
+            assert token.is_cancelled() is False
+    finally:
+        app.dependency_overrides.clear()
+
+    app.dependency_overrides[get_current_user] = lambda: owner
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            accepted = await client.post("/api/v1/agent/runs/run_sec/cancel")
+            assert accepted.status_code == 202
+            assert token.is_cancelled() is True
+    finally:
+        app.dependency_overrides.clear()
+        await registry.release("run_sec")

@@ -4,7 +4,9 @@ This module provides endpoints for chat functionality including
 conversation management and message sending with streaming support.
 """
 
-from uuid import UUID
+import asyncio
+import contextlib
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -14,6 +16,7 @@ from app.application.ports.output.repository.conversation_repository import (
     ConversationRepository,
 )
 from app.application.ports.output.repository.message_repository import MessageRepository
+from app.application.runtime.cancellation import CancellationToken, get_run_cancellation_registry
 from app.application.use_cases.agent.execute_task import ExecuteTaskCommand, ExecuteTaskUseCase
 from app.domain.models.conversation import Conversation
 from app.domain.models.user import User
@@ -264,48 +267,81 @@ async def send_message(
         )
 
     async def generate_response():
-        try:
-            result = await execute_task.execute(
+        token = CancellationToken()
+        run_id = f"run_{uuid4().hex[:12]}"
+        registry = get_run_cancellation_registry()
+        await registry.register(run_id, current_user.id, token)
+        yield SSEStreamHandler.format_sse(
+            {"type": "run_started", "run_id": run_id, "conversation_id": str(conversation_id)},
+            event="run_started",
+        )
+        task = asyncio.create_task(
+            execute_task.execute(
                 ExecuteTaskCommand(
                     prompt=request.content,
                     user_id=current_user.id,
                     project_id=conversation.project_id,
                     conversation_id=conversation_id,
-                    run_id=str(conversation_id),
+                    run_id=run_id,
                     parent_message_id=request.parent_message_id,
+                    cancellation_token=token,
                 )
             )
+        )
+        await registry.bind_task(run_id, task)
+        try:
+            result = await task
             run_state = result.run_state
 
             for tc in run_state.tool_calls:
                 yield SSEStreamHandler.format_sse(
-                    {"type": "tool_call", "name": tc.name, "arguments": tc.arguments},
+                    {"type": "tool_call", "name": tc.name},
                     event="tool_call",
                 )
 
-            if run_state.status == AgentStatus.COMPLETED:
+            if run_state.status == AgentStatus.CANCELLED:
+                yield SSEStreamHandler.format_sse(
+                    {"type": "cancelled", "run_id": run_id},
+                    event="cancelled",
+                )
+            elif run_state.status == AgentStatus.COMPLETED:
                 content = run_state.final_response or ""
                 yield SSEStreamHandler.format_sse(
                     {"type": "content", "content": content},
                     event="content",
                 )
                 yield SSEStreamHandler.format_sse(
-                    {"type": "done", "message_id": str(result.conversation_id)},
+                    {"type": "done", "message_id": str(result.conversation_id), "run_id": run_id},
                     event="done",
                 )
             else:
-                err_msg = run_state.error.message if run_state.error else "Agent execution failed"
                 yield SSEStreamHandler.format_sse(
-                    {"type": "error", "error": err_msg},
+                    {"type": "error", "error": "Agent execution failed"},
                     event="error",
                 )
 
+        except asyncio.CancelledError:
+            token.cancel()
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
+            current = asyncio.current_task()
+            if current is not None and current.cancelled():
+                raise
+            yield SSEStreamHandler.format_sse(
+                {"type": "cancelled", "run_id": run_id},
+                event="cancelled",
+            )
+            return
         except Exception as e:
             logger.error("Error generating response", error=str(e))
             yield SSEStreamHandler.format_sse(
-                {"type": "error", "error": str(e)},
+                {"type": "error", "error": "Agent execution failed"},
                 event="error",
             )
+        finally:
+            await registry.release(run_id)
 
     return StreamingResponse(
         generate_response(),

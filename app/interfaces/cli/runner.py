@@ -38,11 +38,13 @@ def is_quiet(args: Namespace) -> bool:
     return (os.environ.get("BYTEBUDDHI_QUIET") or "").strip().lower() in {"1", "true", "yes"}
 
 
-async def _await_with_signals(coro: Awaitable[int]) -> int:
+async def _await_with_signals(coro: Awaitable[int], app: CliApp | None = None) -> int:
     task: asyncio.Task[int] = asyncio.ensure_future(coro)
     loop = asyncio.get_running_loop()
 
     def _cancel() -> None:
+        if app is not None and app.cancellation_token is not None:
+            app.cancellation_token.cancel()
         if not task.done():
             task.cancel()
 
@@ -98,7 +100,8 @@ async def async_execute(
     try:
         if app is not None:
             return await _await_with_signals(
-                dispatch(args, app, json_mode=json_mode, quiet=quiet, stdin=stdin, stderr=stderr)
+                dispatch(args, app, json_mode=json_mode, quiet=quiet, stdin=stdin, stderr=stderr),
+                app=app,
             )
         async with cli_session(
             include_runtime=include_runtime,
@@ -114,7 +117,8 @@ async def async_execute(
                     quiet=quiet,
                     stdin=stdin,
                     stderr=stderr,
-                )
+                ),
+                app=session_app,
             )
     except CliError as exc:
         return present_error(exc, json_mode=json_mode, debug=debug, cause=exc.__cause__, stdout=stdout, stderr=stderr)

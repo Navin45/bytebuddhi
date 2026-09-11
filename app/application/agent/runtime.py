@@ -3,6 +3,7 @@
 Provides the inner agent execution loop orchestrated via LangGraph.
 """
 
+import asyncio
 import time
 from typing import Any
 
@@ -13,6 +14,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.application.agent.context import ContextEngine
 from app.application.agent.errors import (
+    AgentCancelledError,
     AgentError,
     IterationLimitExceededError,
     ModelCallError,
@@ -26,6 +28,7 @@ from app.application.ports.output.observability.context import get_correlation_c
 from app.application.ports.output.observability.meter import Meter
 from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
+from app.application.runtime.cancellation import CancellationToken
 from app.application.tools.context import ToolExecutionContext, auxiliary_metadata
 from app.application.tools.definition import ToolCall
 from app.application.tools.executor import ToolExecutor
@@ -49,10 +52,17 @@ def create_agent_loop_graph(
     workspace: Workspace | None = None,
     memory_orchestrator: MemoryOrchestrator | None = None,
     execution_context: ExecutionContext | None = None,
+    cancellation_token: CancellationToken | None = None,
 ) -> CompiledStateGraph:
     """Build and compile the inner agent loop StateGraph using LangGraph."""
 
     async def model_node(state: AgentLoopState) -> dict[str, Any]:
+        if cancellation_token is not None and cancellation_token.is_cancelled():
+            return {
+                "status": AgentStatus.CANCELLED.value,
+                "error": AgentCancelledError().to_dict(),
+                "final_response": None,
+            }
         iteration = state.get("iteration", 0) + 1
         max_iterations = state.get("max_iterations", 10)
 
@@ -186,10 +196,17 @@ def create_agent_loop_graph(
 
         results = []
         for call in tool_calls:
+            if cancellation_token is not None and cancellation_token.is_cancelled():
+                return {
+                    "status": AgentStatus.CANCELLED.value,
+                    "error": AgentCancelledError().to_dict(),
+                    "pending_tool_calls": [],
+                }
             ctx = ToolExecutionContext.from_execution(
                 execution_context,
                 tool_call_id=call.id,
                 workspace=ws,
+                cancellation_token=cancellation_token.event if cancellation_token is not None else None,
                 metadata=aux_metadata,
             )
             res = await tool_executor.execute(call, context=ctx)
@@ -237,7 +254,7 @@ def create_agent_loop_graph(
 
     def route_decision(state: AgentLoopState) -> str:
         """Route conditionally based on model output."""
-        if state.get("status") == AgentStatus.FAILED.value:
+        if state.get("status") in {AgentStatus.FAILED.value, AgentStatus.CANCELLED.value}:
             return "end"
 
         if state.get("status") == AgentStatus.WAITING_FOR_TOOL.value and state.get("pending_tool_calls"):
@@ -323,6 +340,7 @@ class AgentRuntime:
         tool_registry: ToolRegistry | None = None,
         tool_executor: ToolExecutor | None = None,
         max_iterations: int | None = None,
+        cancellation_token: CancellationToken | None = None,
     ) -> AgentRunState:
         """Execute the agent loop for the given messages.
 
@@ -377,6 +395,7 @@ class AgentRuntime:
                 workspace=workspace or self.workspace,
                 memory_orchestrator=self.memory_orchestrator,
                 execution_context=execution_context,
+                cancellation_token=cancellation_token,
             )
 
         run_config = config or {"configurable": {"thread_id": active_run_id}}
@@ -408,6 +427,10 @@ class AgentRuntime:
             try:
                 raw_result = await graph_to_use.ainvoke(initial_state, config=run_config)
                 state_res = AgentRunState.from_loop_state(raw_result)
+                if cancellation_token is not None and cancellation_token.is_cancelled():
+                    state_res.status = AgentStatus.CANCELLED
+                    if state_res.error is None:
+                        state_res.error = AgentCancelledError()
 
                 duration_ms = (time.perf_counter() - start_time) * 1000.0
                 status_str = state_res.status.value
@@ -431,6 +454,12 @@ class AgentRuntime:
                     iterations=raw_result.get("iteration"),
                 )
                 return state_res
+            except asyncio.CancelledError:
+                if cancellation_token is not None:
+                    cancellation_token.cancel()
+                span.set_attribute(SpanAttributes.EXECUTION_STATUS, AgentStatus.CANCELLED.value)
+                # Re-raise so asyncio.wait_for timeouts and Task.cancel() keep working.
+                raise
             except Exception as e:
                 duration_ms = (time.perf_counter() - start_time) * 1000.0
                 self._duration_hist.record(duration_ms, {"execution_status": "failed"})

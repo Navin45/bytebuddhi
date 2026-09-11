@@ -16,7 +16,7 @@ ByteBuddhi is a production-grade AI coding and multi-agent execution platform bu
 
 ```text
                                  Client Layer
-                 (REST API / SSE Streaming / CLI)
+                 (REST API / SSE Streaming / CLI / VS Code)
                                       │
                                       │
                                       ▼
@@ -105,6 +105,7 @@ bytebuddhi/
 │   └── interfaces/               # Primary adapters & presentation
 │       ├── api/                  # FastAPI routes, schemas, middleware, SSE
 │       └── cli/                  # argparse adapter over ExecuteTaskUseCase
+├── vscode-extension/             # Thin VS Code client (JWT → API)
 ├── tests/                        # Comprehensive test suite (264+ tests)
 │   ├── unit/                     # Domain, application, and infrastructure unit tests
 │   ├── integration/              # End-to-end multi-agent, memory, OTel flows
@@ -218,6 +219,17 @@ uv run bytebuddhi chat --user-id <uuid>
 
 The CLI calls `ExecuteTaskUseCase` in-process (no localhost HTTP hop). See [CLI](docs/cli.md) for identity, workspace selection, output modes, and exit codes.
 
+### 7. VS Code extension
+
+```bash
+cd vscode-extension
+npm install
+npm run compile
+npm test
+```
+
+Sign in from the command palette (`ByteBuddhi: Sign In`). Tasks run through the same API `ExecuteTaskUseCase` path. See [VS Code](docs/vscode.md).
+
 ---
 
 ## Verification & Quality Gate
@@ -278,7 +290,7 @@ Detailed production-grade architectural and design specifications are maintained
 
 - **[High-Level Design (HLD)](docs/hld.md)**: System vision, C4 container models, subsystem breakdown, technology stack rationale, and non-functional requirements.
 - **[Low-Level Design (LLD)](docs/lld.md)**: Class contracts, hexagonal layer ports, state machine transitions, priority token budgeting algorithm, and concurrency models.
-- **[CLI](docs/cli.md)**: Terminal adapter, commands, identity, workspace selection, JSON/CI usage, exit codes, and security boundary.
+- **[VS Code](docs/vscode.md)**: Thin IDE client, JWT SecretStorage, commands, webview CSP, cancellation.
 - **Architecture Flowcharts (Mermaid)**:
   - [`docs/system_architecture.mermaid`](docs/system_architecture.mermaid): C4 container & component topology.
   - [`docs/agent_runtime_flow.mermaid`](docs/agent_runtime_flow.mermaid): Single-agent reasoning and tool execution loop sequence.

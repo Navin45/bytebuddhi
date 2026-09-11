@@ -130,7 +130,8 @@ local/
 tmp/
 temp/
 
-# Secrets and keys
+vscode-extension/node_modules/
+vscode-extension/out/
 *.pem
 *.key
 *.cert

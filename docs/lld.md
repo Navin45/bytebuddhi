@@ -292,3 +292,4 @@ query → WebSearchProvider.search
 7. **Managed Workspace Guard**: In `WORKSPACE_MODE=managed`, resolved workspace paths must remain inside `WORKSPACE_ROOT` after canonicalization (symlink and traversal escapes denied).
 8. **Execution-scoped artifacts**: Tool/command archives require trusted `ExecutionContext`. Missing context is an error, not a write to `global/`.
 9. **CLI adapter**: The CLI does not construct `AgentRuntime` or authorize workspaces itself. Identity comes from `--user-id` / `BYTEBUDDHI_USER_ID` plus `UserRepository`. See [CLI](cli.md).
+10. **VS Code adapter**: The IDE client uses JWT against the HTTP API. Webview messages are untrusted. Secrets use `SecretStorage`. See [VS Code](vscode.md).

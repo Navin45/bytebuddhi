@@ -9,6 +9,7 @@ from app.application.agent.state import AgentRunState
 from app.application.ports.output.logger import get_logger
 from app.application.ports.output.repository.conversation_repository import ConversationRepository
 from app.application.ports.output.repository.message_repository import MessageRepository
+from app.application.runtime.cancellation import CancellationToken
 from app.application.workspace.resolution_service import WorkspaceResolutionService
 from app.domain.models.conversation import Conversation
 from app.domain.models.execution_context import ExecutionContext
@@ -31,6 +32,7 @@ class ExecuteTaskCommand:
     approved_actions: tuple[str, ...] = ()
     agent_id: str | None = None
     history_limit: int = 10
+    cancellation_token: CancellationToken | None = None
 
 
 @dataclass
@@ -133,6 +135,7 @@ class ExecuteTaskUseCase:
             run_id=run_id,
             execution_context=execution_context,
             config={"configurable": {"thread_id": thread_id}},
+            cancellation_token=command.cancellation_token,
         )
 
         response_text = run_state.final_response or ""

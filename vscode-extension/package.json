@@ -1,0 +1,89 @@
+{
+  "name": "bytebuddhi",
+  "displayName": "ByteBuddhi",
+  "description": "Thin VS Code client for the ByteBuddhi agent platform. Execution stays on the ByteBuddhi API.",
+  "version": "0.1.0",
+  "publisher": "bytebuddhi",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onView:bytebuddhi.chat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "bytebuddhi.signIn",
+        "title": "ByteBuddhi: Sign In"
+      },
+      {
+        "command": "bytebuddhi.signOut",
+        "title": "ByteBuddhi: Sign Out"
+      },
+      {
+        "command": "bytebuddhi.runTask",
+        "title": "ByteBuddhi: Run Task"
+      },
+      {
+        "command": "bytebuddhi.openChat",
+        "title": "ByteBuddhi: Open Chat"
+      },
+      {
+        "command": "bytebuddhi.cancelTask",
+        "title": "ByteBuddhi: Cancel Task"
+      },
+      {
+        "command": "bytebuddhi.showStatus",
+        "title": "ByteBuddhi: Show Status"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "bytebuddhi",
+          "title": "ByteBuddhi",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "bytebuddhi": [
+        {
+          "type": "webview",
+          "id": "bytebuddhi.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ByteBuddhi",
+      "properties": {
+        "bytebuddhi.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000",
+          "description": "ByteBuddhi API base URL. Secrets are not stored here."
+        },
+        "bytebuddhi.project": {
+          "type": "string",
+          "default": "",
+          "description": "Optional project UUID. The API still authorizes ownership."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "lint": "tsc -p . --noEmit",
+    "test": "npm run compile && node --test out/test/architecture.test.js out/test/protocol.test.js",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}

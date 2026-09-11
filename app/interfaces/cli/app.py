@@ -8,6 +8,7 @@ from uuid import UUID
 
 from app.application.agent.types import AgentStatus
 from app.application.ports.output.repository.user_repository import UserRepository
+from app.application.runtime.cancellation import CancellationToken
 from app.application.use_cases.agent.execute_task import ExecuteTaskCommand, ExecuteTaskUseCase
 from app.application.use_cases.project.get_project import GetProjectUseCase
 from app.application.use_cases.project.list_projects import ListProjectsUseCase
@@ -51,6 +52,7 @@ class CliApp:
         self.stdout = stdout
         self.stderr = stderr
         self.last_conversation_id: UUID | str | None = None
+        self.cancellation_token: CancellationToken | None = None
 
     async def authenticate(self, user_id: UUID) -> UUID:
         user = await self.user_repository.get_by_id(user_id)
@@ -84,14 +86,19 @@ class CliApp:
         if self.execute_task is None:
             raise CliError("Task execution is not available for this command", ExitCode.CONFIG_FAILURE)
         write_progress("Running task...", quiet=quiet, json_mode=json_mode, stream=self.stderr)
-        result = await self.execute_task.execute(
-            ExecuteTaskCommand(
-                prompt=prompt,
-                user_id=user_id,
-                project_id=project_id,
-                conversation_id=conversation_id,
+        self.cancellation_token = CancellationToken()
+        try:
+            result = await self.execute_task.execute(
+                ExecuteTaskCommand(
+                    prompt=prompt,
+                    user_id=user_id,
+                    project_id=project_id,
+                    conversation_id=conversation_id,
+                    cancellation_token=self.cancellation_token,
+                )
             )
-        )
+        finally:
+            self.cancellation_token = None
         self.last_conversation_id = result.conversation_id
         if json_mode:
             write_json(envelope_from_result(result), stream=self.stdout)
