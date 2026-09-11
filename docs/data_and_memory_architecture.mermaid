@@ -1,0 +1,25 @@
+flowchart LR
+    %% Inputs
+    Agent[Agent Execution Loop] --> ContextEngine[Context Engine]
+    Agent --> MemoryOrch[Memory Orchestrator]
+    Agent --> ToolExec[Tool Executor]
+
+    %% Working Memory (Ephemeral / Local)
+    subgraph LocalEphemeral["Ephemeral / Local Operational Tier"]
+        SQLiteWAL[("SQLite (WAL Mode)\n- Scoped to run_id\n- Thread-safe readers\n- Short write transactions\n- Auto TTL expiration")]
+        ArtifactStore[("Local Artifact Store\n- Heavy outputs > 6KB\n- Workspace path confined\n- SHA-256 deduplicated\n- Bounded previews")]
+    end
+
+    %% Durable Shared Memory
+    subgraph SharedDurable["Authoritative Shared Tier (Cloud / Server)"]
+        PostgresModels[("PostgreSQL 16+\n- Users & Projects\n- Conversations & Messages\n- Durable Agent Checkpoints")]
+        PGVector[("pgvector Embeddings\n- Semantic memory items\n- Vector similarity search\n- User / Project / Global scope")]
+        RedisCache[("Redis 7+\n- Token bucket rate limits\n- Fast session cache\n- SSE connection states")]
+    end
+
+    %% Routing
+    MemoryOrch -->|Working State| SQLiteWAL
+    MemoryOrch -->|Durable Knowledge| PGVector
+    ToolExec -->|Payload > 6KB| ArtifactStore
+    ContextEngine -->|Load Checkpoint| PostgresModels
+    ContextEngine -->|Rate Check| RedisCache

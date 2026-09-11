@@ -1,0 +1,97 @@
+flowchart TB
+    %% Client Tier
+    subgraph Clients["Client & Interface Tier"]
+        REST_API["REST Client / Web UI"]
+        SSE_Stream["SSE Streaming Client"]
+        CLI_IDE["CLI & IDE Clients (Phase 8-9)"]
+    end
+
+    %% Gateway & API Tier
+    subgraph APILayer["FastAPI Interface Layer (app/interfaces/api)"]
+        Router["APIRouter (/api/v1)"]
+        AuthMiddleware["JWT Auth & Rate Limiter Middleware"]
+        SSEHandler["SSEStreamHandler (Event Stream)"]
+        APIDependencies["Dependency Injection Container (dependencies.py)"]
+    end
+
+    %% Orchestration & Runtime Tier
+    subgraph OrchestrationLayer["Orchestration & Agent Layer (app/application/agent)"]
+        Orchestrator["MultiAgentOrchestrator\n(DAG Scheduler, Concurrency Semaphore, Budgets)"]
+        AgentRegistry["AgentRegistry\n(Immutable Role Specs: Researcher, Coder, Reviewer)"]
+        Projector["AgentContextProjector\n(Scope Allowlisting & Identity Confinement)"]
+        AgentRuntime["AgentRuntime\n(Single Unified Execution Loop)"]
+        LangGraphLoop["LangGraph State Machine\n(AgentLoopGraph: Model <-> Tool Execution)"]
+    end
+
+    %% Core Application Services Tier
+    subgraph CoreServices["Application Services Layer (app/application)"]
+        ContextEngine["ContextEngine\n(Token Budgeting, Priority Ranking, Snapshots)"]
+        MemoryOrchestrator["MemoryOrchestrator\n(Hierarchical Storage Routing)"]
+        ToolExecutor["ToolExecutor\n(Sync/Async Runner, Output Bounding)"]
+        ToolPolicy["ToolPolicyEngine\n(Authorization Gating, Self-Approval Denial)"]
+        CodeService["CodeIntelligenceService\n(Tree-sitter AST, Symbol Extraction)"]
+    end
+
+    %% Capabilities Tier
+    subgraph CapabilityLayer["Unified Capability Layer (app/application/tools)"]
+        CapabilityRegistry["ToolRegistry\n(Unified Name & ID Dual-Index)"]
+        NativeTools["Native System Tools\n(Filesystem, Shell, Echo, Delegation)"]
+        GitHubConnector["External Connectors\n(GitHub Connector, Bounded HTTP Client)"]
+        MCPClientMgr["Model Context Protocol (MCP)\n(ClientManager, Stdio/HTTP Transports)"]
+    end
+
+    %% Cross-Cutting Observability Tier
+    subgraph ObservabilityLayer["Cross-Cutting Observability (app/infrastructure/observability)"]
+        AppPorts["Application Ports\n(Tracer, Meter, CorrelationContext)"]
+        OTelSdk["OpenTelemetry SDK\n(SpanProcessor, MeterProvider, Batch Exporter)"]
+        RedactionPolicy["Redaction & Data Bounding\n(Secret Masking, String/Array Capping, Low-Cardinality)"]
+    end
+
+    %% Persistence & OS Tier
+    subgraph PersistenceLayer["Storage & Execution Layer (app/infrastructure)"]
+        PostgresDB[("PostgreSQL 16+\n(Users, Projects, Conversations, Checkpoints)")]
+        PGVector[("pgvector Embeddings\n(Durable Semantic Memory)")]
+        SQLiteWAL[("SQLite (WAL Mode)\n(Run-Scoped Working Memory)")]
+        RedisCache[("Redis 7+\n(Distributed Cache, Rate Limits)")]
+        ArtifactStore[("Local Artifact Store\n(Payloads > 6KB, Bounded Retention)")]
+        ProcessManager["LocalProcessManager\n(OS Subprocesses, PTY/Streams, Timeouts)"]
+    end
+
+    %% Connections
+    Clients --> Router
+    Router --> AuthMiddleware
+    AuthMiddleware --> SSEHandler
+    AuthMiddleware --> APIDependencies
+
+    APIDependencies --> Orchestrator
+    APIDependencies --> AgentRuntime
+
+    Orchestrator --> AgentRegistry
+    Orchestrator --> Projector
+    Orchestrator --> AgentRuntime
+
+    AgentRuntime --> LangGraphLoop
+    AgentRuntime --> ContextEngine
+    AgentRuntime --> ToolExecutor
+
+    ContextEngine --> MemoryOrchestrator
+    MemoryOrchestrator --> SQLiteWAL
+    MemoryOrchestrator --> PGVector
+    MemoryOrchestrator --> ArtifactStore
+
+    ToolExecutor --> ToolPolicy
+    ToolPolicy --> CapabilityRegistry
+    CapabilityRegistry --> NativeTools
+    CapabilityRegistry --> GitHubConnector
+    CapabilityRegistry --> MCPClientMgr
+
+    NativeTools --> ProcessManager
+    NativeTools --> ArtifactStore
+
+    CoreServices -.-> AppPorts
+    OrchestrationLayer -.-> AppPorts
+    AppPorts --> RedactionPolicy
+    RedactionPolicy --> OTelSdk
+
+    APILayer --> PostgresDB
+    APILayer --> RedisCache

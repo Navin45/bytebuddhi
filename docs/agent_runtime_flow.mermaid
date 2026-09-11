@@ -1,0 +1,67 @@
+sequenceDiagram
+    autonumber
+    actor Caller as Client / REST API
+    participant Runtime as AgentRuntime
+    participant Context as ContextEngine
+    participant Mem as MemoryOrchestrator
+    participant LLM as ModelGateway (OpenAI / Anthropic)
+    participant Policy as ToolPolicyEngine
+    participant Exec as ToolExecutor
+    participant Cap as Capability (Native / MCP / Connector)
+    participant OTel as Observability (Tracer / Meter)
+
+    Caller->>Runtime: run(messages, metadata, config)
+    activate Runtime
+    Runtime->>OTel: start_as_current_span("agent.run")
+
+    Runtime->>Context: build_context(messages, working_memory, tools)
+    activate Context
+    Context->>Mem: retrieve_relevant(query, user_id, project_id)
+    Mem-->>Context: Ranked Memories (Postgres pgvector + SQLite)
+    Context->>Context: Budget Tokens (System > Task > Tools > Obs > History)
+    Context-->>Runtime: ModelContext (Bounded token prompt)
+    deactivate Context
+
+    loop Agent Reasoning & Execution Loop (Bounded Iterations)
+        Runtime->>LLM: generate(ModelContext, tool_definitions)
+        activate LLM
+        LLM-->>Runtime: ModelResponse (content, tool_calls)
+        deactivate LLM
+        Runtime->>OTel: record_token_usage(prompt_tokens, completion_tokens)
+
+        alt Model Returns Final Answer (No Tool Calls)
+            Runtime->>Mem: persist_observation(run_id, summary)
+            Runtime->>OTel: record_duration()
+            Runtime-->>Caller: AgentRunState(COMPLETED, final_response)
+        else Model Requests Tool Invocations
+            loop For Each ToolCall
+                Runtime->>Policy: check_authorization(tool_call, context)
+                activate Policy
+                alt Policy Denies Tool Call
+                    Policy-->>Runtime: Denied (e.g. Self-Approval or Blacklisted Command)
+                    Runtime->>Runtime: Append ToolResult(status=ERROR, "Unauthorized")
+                else Policy Authorizes Tool Call
+                    Policy-->>Runtime: Authorized
+                    deactivate Policy
+
+                    Runtime->>Exec: execute(tool_call, context)
+                    activate Exec
+                    Exec->>OTel: start_as_current_span("tool.execute")
+                    Exec->>Cap: invoke_handler(**arguments)
+                    activate Cap
+                    Cap-->>Exec: Raw Output
+                    deactivate Cap
+
+                    alt Output Length > 6,000 Characters
+                        Exec->>Exec: Archive payload to ArtifactStore
+                        Exec-->>Runtime: ToolResult (truncated snippet + artifact_id reference)
+                    else Normal Sized Output
+                        Exec-->>Runtime: ToolResult (status=SUCCESS, output)
+                    end
+                    deactivate Exec
+                end
+            end
+            Runtime->>Context: update_state(tool_calls, tool_results)
+        end
+    end
+    deactivate Runtime

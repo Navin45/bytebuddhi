@@ -1,0 +1,45 @@
+flowchart TD
+    %% Start
+    Start([Parent Request: execute_tasks]) --> ValidateDAG[Validate DAG Dependencies\nDetect cycles, missing deps, self-deps]
+
+    %% Validation Check
+    ValidateDAG --> Valid{Is DAG Valid?}
+    Valid -- No --> Reject[Fail Fast: InvalidDependencyError]
+    Valid -- Yes --> InitContext[Init Parent Correlation Context\nrun_id, user_id, project_id, depth=0]
+
+    %% Main Scheduling Loop
+    InitContext --> Loop{Tasks Remaining?}
+    Loop -- No --> Aggregate[Topological Result Aggregation\nPreserve declared order]
+    Aggregate --> ReturnResult([Return OrchestrationResult])
+
+    %% Task Eligibility
+    Loop -- Yes --> CheckEligible[Identify Eligible Tasks\nAll depends_on completed with SUCCESS]
+    CheckEligible --> AcquireSemaphore[Acquire Concurrency Semaphore\nasyncio.Semaphore: max_concurrent_children=4]
+
+    %% Execution Pipeline
+    AcquireSemaphore --> ReserveBudget[Atomic Global Budget Reservation\nAtomic check: tokens_reserved + task_tokens <= max_global_tokens]
+    ReserveBudget --> BudgetCheck{Budget Available?}
+
+    BudgetCheck -- No --> FailBudget[Mark Task FAILED: Budget Exhausted]
+    FailBudget --> ReleaseSemaphore[Release Semaphore]
+    ReleaseSemaphore --> Loop
+
+    BudgetCheck -- Yes --> ProjectContext[AgentContextProjector\nAllowlist task instructions, redact approval/transcripts]
+    ProjectContext --> RestrictCaps[Compile Scoped Environment\nparent_caps ∩ agent_def.allowed_capabilities]
+
+    RestrictCaps --> SpawnTask[Spawn Async Child Worker\nasyncio.create_task: execute_task]
+    SpawnTask --> ReusedRuntime[Execute via Shared AgentRuntime\nNo separate child runtime class!]
+
+    %% Worker Execution
+    ReusedRuntime --> TaskDone{Execution Result}
+
+    TaskDone -- Success --> StoreResult[Store AgentResult: SUCCESS\nAccumulate token usage]
+    StoreResult --> ReleaseSemaphore
+
+    TaskDone -- Timeout / Error --> HandleError[Record Error Status\nIf is_critical: Trigger Orchestration Abort]
+    HandleError --> CancelTrigger{Is Critical Failure?}
+
+    CancelTrigger -- Yes --> CascadeCancel[Trigger Cascading Cancellation\nasyncio.Event.set: Cancel pending/running tasks]
+    CascadeCancel --> StoreResult
+
+    CancelTrigger -- No --> StoreResult
