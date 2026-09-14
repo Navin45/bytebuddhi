@@ -175,7 +175,7 @@ class PlaywrightWebRenderer:
 
 
 def _cancel_download(download: Any) -> None:
-    """Phase 7.6 does not provide a file-download capability."""
+    """This renderer does not provide a file-download capability."""
     cancel = getattr(download, "cancel", None)
     if callable(cancel):
         cancel()

@@ -32,10 +32,10 @@ async def test_connection() -> bool:
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-            logger.info("✅ Database connection successful")
+            logger.info(" Database connection successful")
             return True
     except Exception as e:
-        logger.error("❌ Database connection failed", error=str(e))
+        logger.error(" Database connection failed", error=str(e))
         return False
 
 
@@ -59,7 +59,7 @@ async def enable_extensions() -> bool:
                 result = await conn.execute(text(f"SELECT * FROM pg_extension WHERE extname = '{ext_name}'"))
 
                 if result.fetchone():
-                    logger.info(f"✅ {ext_name} already enabled")
+                    logger.info(f" {ext_name} already enabled")
                 else:
                     logger.info(f"Enabling {ext_name}...")
                     try:
@@ -67,16 +67,16 @@ async def enable_extensions() -> bool:
                             await conn.execute(text(f'CREATE EXTENSION IF NOT EXISTS "{ext_name}"'))
                         else:
                             await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ext_name}"))
-                        logger.info(f"✅ {ext_name} enabled successfully")
+                        logger.info(f" {ext_name} enabled successfully")
                     except Exception as e:
-                        logger.error(f"❌ Failed to enable {ext_name}", error=str(e))
+                        logger.error(f" Failed to enable {ext_name}", error=str(e))
                         if ext_name == "vector":
                             logger.info("Note: You may need to enable pgvector in your database dashboard")
                         return False
 
             return True
     except Exception as e:
-        logger.error("❌ Failed to enable extensions", error=str(e))
+        logger.error(" Failed to enable extensions", error=str(e))
         return False
 
 
@@ -101,14 +101,14 @@ async def verify_setup() -> bool:
 
             return True
     except Exception as e:
-        logger.error("❌ Setup verification failed", error=str(e))
+        logger.error(" Setup verification failed", error=str(e))
         return False
 
 
 async def main():
     """Main setup function."""
     logger.info("=" * 60)
-    logger.info("🗄️  ByteBuddhi Database Setup")
+    logger.info("  ByteBuddhi Database Setup")
     logger.info("=" * 60)
 
     # Test connection
@@ -133,7 +133,7 @@ async def main():
         sys.exit(1)
 
     logger.info("\n" + "=" * 60)
-    logger.info("🎉 Database setup completed successfully!")
+    logger.info(" Database setup completed successfully!")
     logger.info("=" * 60)
     logger.info("\nNext steps:")
     logger.info("1. Run migrations: alembic upgrade head")

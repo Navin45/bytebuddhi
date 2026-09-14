@@ -21,6 +21,8 @@ engine = create_async_engine(
     pool_size=settings.database_pool_size,
     max_overflow=settings.database_max_overflow,
     pool_pre_ping=True,
+    pool_recycle=settings.database_pool_recycle_seconds,
+    pool_timeout=settings.database_pool_timeout_seconds,
     connect_args={
         "statement_cache_size": 0,  # Disable prepared statements for pgBouncer
         "server_settings": {
@@ -53,7 +55,9 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
+    """Initialize database tables in non-production. Production uses Alembic only."""
+    if settings.is_production:
+        return
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

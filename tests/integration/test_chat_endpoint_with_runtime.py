@@ -6,6 +6,8 @@ from httpx import ASGITransport, AsyncClient
 
 from app.application.agent.state import AgentRunState
 from app.application.agent.types import AgentStatus
+from app.application.llm.catalog import StaticModelCatalog
+from app.application.ports.output.llm.model_gateway import ModelCapability, ModelDescriptor, ModelRef
 from app.application.tools.definition import ToolCall, ToolResult
 from app.domain.models.conversation import Conversation
 from app.domain.models.user import User
@@ -14,10 +16,22 @@ from app.interfaces.api.dependencies import (
     get_agent_runtime,
     get_conversation_repository,
     get_message_repository,
+    get_model_catalog,
     get_workspace_resolution_service,
 )
 from app.interfaces.api.main import app
 from app.interfaces.api.middleware import get_current_user
+
+
+def _available_catalog() -> StaticModelCatalog:
+    descriptor = ModelDescriptor(
+        provider="openai",
+        model="gpt-4-turbo-preview",
+        display_name="OpenAI gpt-4-turbo-preview",
+        capabilities=(ModelCapability.CHAT, ModelCapability.TOOL_CALLING),
+        available=True,
+    )
+    return StaticModelCatalog([descriptor], ModelRef("openai", "gpt-4-turbo-preview"))
 
 
 @pytest.mark.asyncio
@@ -73,6 +87,7 @@ async def test_chat_endpoint_with_agent_runtime():
     app.dependency_overrides[get_message_repository] = lambda: mock_msg_repo
     app.dependency_overrides[get_agent_runtime] = lambda: mock_runtime
     app.dependency_overrides[get_workspace_resolution_service] = lambda: mock_workspace_res
+    app.dependency_overrides[get_model_catalog] = _available_catalog
 
     try:
         transport = ASGITransport(app=app)
@@ -149,6 +164,7 @@ async def test_chat_endpoint_without_project_metadata():
     app.dependency_overrides[get_conversation_repository] = lambda: mock_conv_repo
     app.dependency_overrides[get_message_repository] = lambda: mock_msg_repo
     app.dependency_overrides[get_agent_runtime] = lambda: mock_runtime
+    app.dependency_overrides[get_model_catalog] = _available_catalog
 
     try:
         transport = ASGITransport(app=app)

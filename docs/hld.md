@@ -2,7 +2,7 @@
 
 > **Document Version:** 1.0.0  
 > **Status:** Production-Grade Baseline  
-> **Scope:**  (Core Runtime, Local Execution, Memory/Context/Artifacts, Code Intelligence, Connectors/MCP, Multi-Agent Orchestration, OpenTelemetry Observability, Web Research)
+> **Scope:** Core runtime, local execution, memory/artifacts, code intelligence, connectors/MCP, multi-agent orchestration, OpenTelemetry, web research, model gateway
 
 ---
 
@@ -68,7 +68,7 @@ flowchart TB
         TreeSitterParser["TreeSitterCodeParser (AST)"]
         GitHubConn["GitHubConnector"]
         MCPClient["MCP ClientManager (Stdio/HTTP)"]
-        ModelGateways["OpenAI / Anthropic Gateways"]
+        ModelGateways["ModelGateway / provider adapters"]
         OTelSdk["OpenTelemetry SDK (OTLP/Console)"]
     end
 
@@ -184,15 +184,22 @@ Workspace modes: `local` for development/CLI user-selected roots; `managed` (req
 
 - **Adapter**: `app/interfaces/cli` parses arguments, resolves a trusted user UUID, and calls `ExecuteTaskUseCase`.
 - **Composition**: Shared `assemble_agent_runtime` / `compose_application_graph`. Command modules do not construct `AgentRuntime`.
-- **Identity**: `--user-id` or `BYTEBUDDHI_USER_ID` looked up in `UserRepository`. Prompt text cannot set identity.
+- **Identity**: `--user-id`, `BYTEBUDDHI_USER_ID`, or `bytebuddhi login` stored `User.id`. Prompt text cannot set identity.
 - **Workspace**: `--project` or explicit `--cwd` (local mode only, matching owned `local_path`). Never a silent `.` fallback.
 
 ### 4.10 VS Code extension
 
 - **Transport**: Authenticated HTTP API (`/api/v1/chat/...`, `/api/v1/agent/runs/{id}/cancel`). Not an embedded Python runtime.
-- **Identity**: JWT from `POST /api/v1/auth/login`, stored in VS Code SecretStorage.
+- **Identity**: JWT from password or Google/GitHub OAuth (`POST /api/v1/auth/oauth/exchange`), stored in VS Code SecretStorage.
 - **Cancellation**: Application `CancellationToken` registered per `run_id`. The extension requests cancel; it does not kill OS processes.
 - See [VS Code](vscode.md).
+
+### 4.11 Production hardening
+
+- **Fail closed**: production rejects weak JWT secrets, `DEBUG`, default DB passwords, `WORKSPACE_MODE=local`, wildcard CORS, and in-process Playwright without `WEB_RENDER_ISOLATED`.
+- **Cancellation**: `CancellationToken` remains canonical. `CANCELLATION_BACKEND=redis` fans cancel to the owning worker.
+- **Events**: `BoundedExecutionEventBus` is the application stream; SSE is an adapter. No replay.
+- **Ops**: [Production](production.md).
 
 ---
 

@@ -293,3 +293,4 @@ query → WebSearchProvider.search
 8. **Execution-scoped artifacts**: Tool/command archives require trusted `ExecutionContext`. Missing context is an error, not a write to `global/`.
 9. **CLI adapter**: The CLI does not construct `AgentRuntime` or authorize workspaces itself. Identity comes from `--user-id` / `BYTEBUDDHI_USER_ID` plus `UserRepository`. See [CLI](cli.md).
 10. **VS Code adapter**: The IDE client uses JWT against the HTTP API. Webview messages are untrusted. Secrets use `SecretStorage`. See [VS Code](vscode.md).
+11. **Production operations**: Redis-optional distributed cancel, bounded execution events, liveness vs readiness, request size limits, fail-closed production settings, and the routing `ModelGateway` catalog. See [Production](production.md) and [Model gateway](models.md).

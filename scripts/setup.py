@@ -72,16 +72,13 @@ def main():
         print("Setup cancelled.")
         sys.exit(0)
 
-    # Check if requirements.txt exists
-    if not Path("requirements.txt").exists():
-        print(" requirements.txt not found!")
+    if not Path("pyproject.toml").exists() or not Path("uv.lock").exists():
+        print(" pyproject.toml or uv.lock not found!")
         print("Make sure you're running this from the project root directory.")
         sys.exit(1)
 
-    # Install dependencies
     steps = [
-        ("pip install --upgrade pip", "Upgrading pip"),
-        ("pip install -r requirements.txt", "Installing dependencies"),
+        ("uv sync", "Installing dependencies from pyproject.toml"),
     ]
 
     for cmd, desc in steps:
@@ -94,9 +91,9 @@ def main():
     print("=" * 60)
     print("\nNext steps:")
     print("1. Copy .env.example to .env and configure your settings")
-    print("2. Run: python scripts/setup_db.py")
-    print("3. Run: alembic upgrade head")
-    print("4. Run: python scripts/start_dev.py")
+    print("2. Run: uv run python scripts/setup_db.py")
+    print("3. Run: uv run alembic upgrade head")
+    print("4. Run: uv run python scripts/start_dev.py")
     print("\nHappy coding! ")
 
 

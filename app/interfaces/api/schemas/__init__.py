@@ -19,6 +19,7 @@ from app.interfaces.api.schemas.chat_schema import (
     MessageCreateRequest,
     MessageFeedbackRequest,
     MessageResponse,
+    ModelSelection,
     StreamChunk,
 )
 from app.interfaces.api.schemas.common import (
@@ -72,4 +73,5 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "StreamChunk",
+    "ModelSelection",
 ]

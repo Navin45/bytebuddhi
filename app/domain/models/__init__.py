@@ -13,6 +13,7 @@ from app.domain.models.agent import (
 from app.domain.models.code_chunk import CodeChunk
 from app.domain.models.conversation import Conversation
 from app.domain.models.embedding import Embedding
+from app.domain.models.external_identity import ExternalIdentity
 from app.domain.models.file import File
 from app.domain.models.message import Message
 from app.domain.models.observability import (
@@ -36,6 +37,7 @@ __all__ = [
     "Conversation",
     "DataBoundingPolicy",
     "Embedding",
+    "ExternalIdentity",
     "ExecutionTelemetryStatus",
     "File",
     "Message",

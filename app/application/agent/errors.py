@@ -42,6 +42,24 @@ class AgentError(Exception):
         }
 
 
+class ModelSelectionError(AgentError):
+    """Raised when a requested model is not registered, enabled, or available."""
+
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+    ):
+        super().__init__(
+            code=AgentErrorCode.VALIDATION_ERROR,
+            message=message,
+            details=details or {},
+            is_retryable=False,
+            cause=cause,
+        )
+
+
 class ModelCallError(AgentError):
     """Raised when an LLM provider call fails."""
 

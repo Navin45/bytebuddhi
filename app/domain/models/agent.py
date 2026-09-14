@@ -1,4 +1,4 @@
-"""Domain models for Phase 6 Multi-Agent Runtime."""
+"""Domain models for multi-agent runtime."""
 
 from dataclasses import dataclass, field
 from enum import StrEnum

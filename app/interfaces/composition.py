@@ -96,6 +96,9 @@ def assemble_agent_runtime(
         memory_orchestrator=memory_orchestrator,
         tracer=tracer,
         meter=meter,
+        llm_timeout_seconds=app_settings.llm_request_timeout_seconds,
+        model_call_max_retries=app_settings.model_call_max_retries,
+        model_call_retry_base_seconds=app_settings.model_call_retry_base_seconds,
     )
 
     orchestrator = MultiAgentOrchestrator(
@@ -123,6 +126,7 @@ class ApplicationGraph:
     execute_task: ExecuteTaskUseCase | None = None
     http_client: Any = None
     mcp_manager: Any = None
+    model_catalog: Any = None
 
     async def aclose(self) -> None:
         if self.http_client is not None and hasattr(self.http_client, "close"):
@@ -140,6 +144,8 @@ def compose_identity_services(db: AsyncSession) -> ApplicationGraph:
     )
 
     project_repo = ProjectRepositoryImpl(db)
+    from app.infrastructure.llm.provider_factory import build_model_catalog
+
     return ApplicationGraph(
         list_projects=ListProjectsUseCase(project_repo),
         get_project=GetProjectUseCase(project_repo),
@@ -148,6 +154,7 @@ def compose_identity_services(db: AsyncSession) -> ApplicationGraph:
             workspace_mode=app_settings.workspace_mode,
         ),
         user_repository=UserRepositoryImpl(db),
+        model_catalog=build_model_catalog(app_settings),
     )
 
 
@@ -166,7 +173,11 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
     from app.infrastructure.connectors.github.github_connector import GitHubConnector
     from app.infrastructure.execution.local_process_manager import LocalProcessManager
     from app.infrastructure.http.external_client import ExternalHttpClient
-    from app.infrastructure.llm.provider_factory import create_embedding_provider, create_model_gateway
+    from app.infrastructure.llm.provider_factory import (
+        build_model_catalog,
+        create_embedding_provider,
+        create_routing_gateway,
+    )
     from app.infrastructure.mcp.client_manager import MCPCapabilityManager
     from app.infrastructure.observability import get_meter, get_tracer
     from app.infrastructure.parser.tree_sitter_parser import TreeSitterCodeParser
@@ -208,9 +219,10 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
         tracer=tracer,
         meter=meter,
     )
+    catalog = build_model_catalog(app_settings)
     runtime = assemble_agent_runtime(
         db,
-        model_gateway=create_model_gateway(),
+        model_gateway=create_routing_gateway(app_settings),
         workspace=workspace,
         command_executor=command_executor,
         tool_policy_engine=tool_policy_engine,
@@ -234,6 +246,7 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
         agent_runtime=runtime,
         conversation_repo=ConversationRepositoryImpl(db),
         message_repo=MessageRepositoryImpl(db),
+        model_catalog=catalog,
     )
     return ApplicationGraph(
         execute_task=execute_task,
@@ -246,4 +259,5 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
         user_repository=UserRepositoryImpl(db),
         http_client=http_client,
         mcp_manager=mcp_manager,
+        model_catalog=catalog,
     )

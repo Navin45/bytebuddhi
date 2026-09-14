@@ -36,6 +36,7 @@ class SpanNames:
     WEB_FETCH = "web.fetch"
     WEB_EXTRACT = "web.extract"
     WEB_RENDER = "web.render"
+    AUTH_OAUTH = "auth.oauth"
 
 
 class SpanAttributes:
@@ -91,6 +92,12 @@ class SpanAttributes:
     RETRY_COUNT = "bytebuddhi.retry.count"
     MCP_SERVER = "bytebuddhi.mcp.server"
     MCP_CAPABILITY = "bytebuddhi.mcp.capability"
+
+    # Authentication (never include code, state, tokens, or email)
+    AUTH_PROVIDER = "bytebuddhi.auth.provider"
+    AUTH_FLOW = "bytebuddhi.auth.flow"
+    AUTH_RESULT = "bytebuddhi.auth.result"
+    AUTH_FAILURE_CATEGORY = "bytebuddhi.auth.failure_category"
 
     # Web research (bounded enums / counts only — never full URLs or queries)
     WEB_PROVIDER = "bytebuddhi.web.provider"
@@ -159,7 +166,7 @@ class RedactionPolicy:
     """Centralized sensitive data redaction policy for telemetry boundaries."""
 
     _SENSITIVE_KEY_PATTERN = re.compile(
-        r"(?i)(authorization|api[_-]?key|token|password|secret|credential|cookie|set-cookie|private[_-]?key|access[_-]?token|refresh[_-]?token)"
+        r"(?i)(authorization|api[_-]?key|token|password|secret|credential|cookie|set-cookie|private[_-]?key|access[_-]?token|refresh[_-]?token|client_secret|authorization_code|code_verifier|oauth_state)"
     )
 
     _SENSITIVE_VALUE_PATTERNS = [
@@ -241,6 +248,10 @@ class DataBoundingPolicy:
         "extraction_method",
         "content_type",
         "operation",
+        "auth_provider",
+        "auth_flow",
+        "auth_result",
+        "auth_failure_category",
         "browser_status",
     }
 

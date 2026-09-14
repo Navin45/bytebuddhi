@@ -1,6 +1,6 @@
 """PostgreSQL durable memory store implementation using SQLAlchemy and pgvector."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,8 +33,8 @@ class PostgresMemoryStore(MemoryStore):
             existing.content = memory.content
             existing.source = memory.source
             existing.importance = memory.importance  # type: ignore[assignment]
-            existing.updated_at = datetime.now(UTC)
-            existing.last_accessed_at = datetime.now(UTC)
+            existing.updated_at = datetime.utcnow()
+            existing.last_accessed_at = datetime.utcnow()
             existing.expires_at = memory.expires_at
             existing.extra_metadata = memory.metadata
             if memory.embedding is not None:
@@ -99,7 +99,7 @@ class PostgresMemoryStore(MemoryStore):
         query_vector: list[float] | None = None,
     ) -> list[MemoryItem]:
         """Search memory items matching filter criteria and scope boundaries."""
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
 
         stmt = select(MemoryItemModel).where(
             MemoryItemModel.importance >= min_importance,
@@ -131,7 +131,7 @@ class PostgresMemoryStore(MemoryStore):
 
     async def update(self, memory: MemoryItem) -> MemoryItem:
         """Update existing memory item."""
-        memory.updated_at = datetime.now(UTC)
+        memory.updated_at = datetime.utcnow()
         return await self.save(memory)
 
     async def touch(self, memory_id: str) -> bool:
@@ -141,13 +141,13 @@ class PostgresMemoryStore(MemoryStore):
         model = result.scalar_one_or_none()
         if not model:
             return False
-        model.last_accessed_at = datetime.now(UTC)
+        model.last_accessed_at = datetime.utcnow()
         await self.session.flush()
         return True
 
     async def cleanup_expired(self) -> int:
         """Purge expired memory items."""
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         stmt = (
             delete(MemoryItemModel)
             .where(
@@ -177,9 +177,9 @@ class PostgresMemoryStore(MemoryStore):
             content=str(model.content),
             source=str(model.source),
             importance=float(model.importance) if model.importance is not None else 0.5,
-            created_at=model.created_at or datetime.now(UTC),
-            updated_at=model.updated_at or datetime.now(UTC),
-            last_accessed_at=model.last_accessed_at or datetime.now(UTC),
+            created_at=model.created_at or datetime.utcnow(),
+            updated_at=model.updated_at or datetime.utcnow(),
+            last_accessed_at=model.last_accessed_at or datetime.utcnow(),
             expires_at=model.expires_at,
             metadata=dict(model.extra_metadata or {}),
             embedding=emb,

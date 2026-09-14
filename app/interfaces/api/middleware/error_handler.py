@@ -5,6 +5,8 @@ import traceback
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
+from app.application.agent.errors import ModelSelectionError
+from app.domain.exceptions.auth_exceptions import AuthenticationError
 from app.domain.exceptions.base import DomainException
 from app.domain.exceptions.conversation_exceptions import ConversationNotFoundException
 from app.domain.exceptions.project_exceptions import (
@@ -39,6 +41,22 @@ async def error_handler_middleware(request: Request, call_next):
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"error": "conflict", "message": str(e)},
+        )
+    except ModelSelectionError as e:
+        logger.warning("Model selection rejected", error=str(e))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "model_selection", "message": e.message},
+        )
+    except AuthenticationError as e:
+        logger.info(
+            "Authentication error",
+            failure_category=e.category.value,
+            path=request.url.path,
+        )
+        return JSONResponse(
+            status_code=e.http_status,
+            content={"error": e.category.value, "message": e.message},
         )
     except DomainException as e:
         logger.warning("Domain exception", error=str(e))

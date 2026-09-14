@@ -1,0 +1,102 @@
+name: bytebuddhi
+
+# Production-shaped stack. Inject secrets via the environment or a secret manager.
+# Do not commit a populated .env. Playwright stays off unless isolated.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bytebuddhi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-bytebuddhi}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bytebuddhi} -d ${POSTGRES_DB:-bytebuddhi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      WORKSPACE_MODE: managed
+      WEB_RENDER_ENABLED: "false"
+      CANCELLATION_BACKEND: redis
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bytebuddhi}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bytebuddhi}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      DEFAULT_MODEL_PROVIDER: ${DEFAULT_MODEL_PROVIDER:-openai}
+      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8000"]}
+      GOOGLE_OAUTH_ENABLED: ${GOOGLE_OAUTH_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      GITHUB_OAUTH_ENABLED: ${GITHUB_OAUTH_ENABLED:-false}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-}
+      OAUTH_POST_LOGIN_REDIRECT: ${OAUTH_POST_LOGIN_REDIRECT:-}
+      OAUTH_VSCODE_REDIRECT: ${OAUTH_VSCODE_REDIRECT:-vscode://bytebuddhi.bytebuddhi/oauth}
+    ports:
+      - "8000:8000"
+    volumes:
+      - artifacts:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/v1/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+
+volumes:
+  postgres_data:
+  redis_data:
+  artifacts:
+
+networks:
+  internal:
+    driver: bridge

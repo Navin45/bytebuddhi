@@ -2,7 +2,7 @@
   "name": "bytebuddhi",
   "displayName": "ByteBuddhi",
   "description": "Thin VS Code client for the ByteBuddhi agent platform. Execution stays on the ByteBuddhi API.",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "publisher": "bytebuddhi",
   "license": "MIT",
   "engines": {
@@ -10,7 +10,8 @@
   },
   "categories": ["Other"],
   "activationEvents": [
-    "onView:bytebuddhi.chat"
+    "onView:bytebuddhi.chat",
+    "onUri"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -18,6 +19,14 @@
       {
         "command": "bytebuddhi.signIn",
         "title": "ByteBuddhi: Sign In"
+      },
+      {
+        "command": "bytebuddhi.signInWithGoogle",
+        "title": "ByteBuddhi: Continue with Google"
+      },
+      {
+        "command": "bytebuddhi.signInWithGitHub",
+        "title": "ByteBuddhi: Continue with GitHub"
       },
       {
         "command": "bytebuddhi.signOut",
@@ -38,6 +47,10 @@
       {
         "command": "bytebuddhi.showStatus",
         "title": "ByteBuddhi: Show Status"
+      },
+      {
+        "command": "bytebuddhi.selectModel",
+        "title": "ByteBuddhi: Select Model"
       }
     ],
     "viewsContainers": {
@@ -79,6 +92,7 @@
     "watch": "tsc -watch -p .",
     "lint": "tsc -p . --noEmit",
     "test": "npm run compile && node --test out/test/architecture.test.js out/test/protocol.test.js",
+    "package": "npm run compile && npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license",
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {

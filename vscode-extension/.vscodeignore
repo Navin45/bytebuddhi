@@ -1,0 +1,9 @@
+.mypy_cache/**
+.vscode/**
+src/**
+out/**/*.map
+out/test/**
+tsconfig.json
+.gitignore
+**/*.vsix
+node_modules/**

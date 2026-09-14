@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 from importlib.metadata import PackageNotFoundError, version
 
+from app import __version__ as fallback_version
+
 
 def package_version() -> str:
     try:
         return version("bytebuddhi")
     except PackageNotFoundError:
-        return "unknown"
+        return fallback_version
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--prompt", default=None, help="Task prompt (alternative to the positional argument)")
     _add_workspace_args(run)
     run.add_argument("--conversation", default=None, help="Existing conversation UUID")
+    _add_model_args(run)
     _add_io_args(run)
 
     chat = sub.add_parser("chat", help="Interactive session reusing conversation identity")
@@ -49,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--prompt", default=None, help="Optional first prompt")
     _add_workspace_args(chat)
     chat.add_argument("--conversation", default=None, help="Existing conversation UUID")
+    _add_model_args(chat)
     _add_io_args(chat)
 
     project = sub.add_parser("project", help="Inspect projects owned by the authenticated user")
@@ -61,6 +65,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     health = sub.add_parser("health", help="Read-only health check (no agent execution)")
     _add_io_args(health)
+
+    models = sub.add_parser("models", help="List models from the configured catalog")
+    _add_io_args(models)
+
+    login = sub.add_parser("login", help="Sign in with Google or GitHub via the ByteBuddhi API")
+    login.add_argument("--provider", choices=("google", "github"), default=None, help="Identity provider")
+    login.add_argument("--code", default=None, help="One-time exchange code from the browser sign-in page")
+    login.add_argument(
+        "--api-url",
+        default=None,
+        help="ByteBuddhi API base URL. Defaults to BYTEBUDDHI_API_URL or http://127.0.0.1:8000",
+    )
+    _add_io_args(login)
+
+    logout = sub.add_parser("logout", help="Remove stored ByteBuddhi credentials from this machine")
+    _add_io_args(logout)
     return parser
 
 
@@ -74,6 +94,19 @@ def _add_workspace_args(parser: argparse.ArgumentParser) -> None:
         "--cwd",
         default=None,
         help=("Explicit local project path. Only valid when WORKSPACE_MODE=local and the path "),
+    )
+
+
+def _add_model_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--provider",
+        default=None,
+        help="Catalog provider id (with --model). Does not accept endpoints or API keys.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Catalog model id. Must be enabled and available. Default comes from server config.",
     )
 
 

@@ -146,9 +146,13 @@ class ToolRegistry:
 
         return results
 
-    def get_schemas_for_openai(self) -> list[dict[str, Any]]:
-        """Get tool schemas formatted for OpenAI function calling."""
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
+        """Canonical tool schemas consumed by ModelGateway adapters."""
         return [defn.to_openai_schema() for defn, _ in self._tools_by_name.values()]
+
+    def get_schemas_for_openai(self) -> list[dict[str, Any]]:
+        """Compatibility alias for get_tool_schemas()."""
+        return self.get_tool_schemas()
 
     def get_schemas_for_anthropic(self) -> list[dict[str, Any]]:
         """Get tool schemas formatted for Anthropic tool use."""

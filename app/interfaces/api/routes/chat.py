@@ -11,12 +11,15 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
+from app.application.agent.errors import ModelSelectionError
 from app.application.agent.types import AgentStatus
 from app.application.ports.output.repository.conversation_repository import (
     ConversationRepository,
 )
 from app.application.ports.output.repository.message_repository import MessageRepository
+from app.application.runtime.admission import ConcurrentRunLimitExceeded, get_run_admission_controller
 from app.application.runtime.cancellation import CancellationToken, get_run_cancellation_registry
+from app.application.runtime.events import BoundedExecutionEventBus, ExecutionEventType
 from app.application.use_cases.agent.execute_task import ExecuteTaskCommand, ExecuteTaskUseCase
 from app.domain.models.conversation import Conversation
 from app.domain.models.user import User
@@ -267,9 +270,19 @@ async def send_message(
         )
 
     async def generate_response():
+        admission = get_run_admission_controller()
+        try:
+            await admission.acquire(current_user.id)
+        except ConcurrentRunLimitExceeded:
+            yield SSEStreamHandler.format_sse(
+                {"type": "error", "error": "Too many concurrent runs"},
+                event="error",
+            )
+            return
         token = CancellationToken()
         run_id = f"run_{uuid4().hex[:12]}"
         registry = get_run_cancellation_registry()
+        bus = BoundedExecutionEventBus()
         await registry.register(run_id, current_user.id, token)
         yield SSEStreamHandler.format_sse(
             {"type": "run_started", "run_id": run_id, "conversation_id": str(conversation_id)},
@@ -285,19 +298,33 @@ async def send_message(
                     run_id=run_id,
                     parent_message_id=request.parent_message_id,
                     cancellation_token=token,
+                    event_sink=bus,
+                    model_provider=request.model.provider if request.model else None,
+                    model_name=request.model.model if request.model else None,
                 )
             )
         )
         await registry.bind_task(run_id, task)
         try:
             result = await task
+            bus.close()
+            streamed_tools: list[str] = []
+            async for event in bus:
+                if event.type == ExecutionEventType.TOOL_STARTED:
+                    name = str(event.payload.get("tool_name", ""))
+                    if name:
+                        streamed_tools.append(name)
+                        yield SSEStreamHandler.format_sse(
+                            {"type": "tool_call", "name": name},
+                            event="tool_call",
+                        )
             run_state = result.run_state
-
             for tc in run_state.tool_calls:
-                yield SSEStreamHandler.format_sse(
-                    {"type": "tool_call", "name": tc.name},
-                    event="tool_call",
-                )
+                if tc.name not in streamed_tools:
+                    yield SSEStreamHandler.format_sse(
+                        {"type": "tool_call", "name": tc.name},
+                        event="tool_call",
+                    )
 
             if run_state.status == AgentStatus.CANCELLED:
                 yield SSEStreamHandler.format_sse(
@@ -315,8 +342,9 @@ async def send_message(
                     event="done",
                 )
             else:
+                error_message = run_state.error.message if run_state.error else "Agent execution failed"
                 yield SSEStreamHandler.format_sse(
-                    {"type": "error", "error": "Agent execution failed"},
+                    {"type": "error", "error": error_message},
                     event="error",
                 )
 
@@ -334,6 +362,12 @@ async def send_message(
                 event="cancelled",
             )
             return
+        except ModelSelectionError as e:
+            yield SSEStreamHandler.format_sse(
+                {"type": "error", "error": e.message},
+                event="error",
+            )
+            return
         except Exception as e:
             logger.error("Error generating response", error=str(e))
             yield SSEStreamHandler.format_sse(
@@ -341,7 +375,9 @@ async def send_message(
                 event="error",
             )
         finally:
+            bus.close()
             await registry.release(run_id)
+            await admission.release(current_user.id)
 
     return StreamingResponse(
         generate_response(),

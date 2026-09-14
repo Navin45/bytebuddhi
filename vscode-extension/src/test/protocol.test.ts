@@ -17,6 +17,9 @@ test("rejects webview identity and approval injection", () => {
   );
   assert.equal(parseWebviewMessage({ type: "send_message", prompt: "hi", approved_actions: ["all"] }), undefined);
   assert.equal(parseWebviewMessage({ type: "run_shell", prompt: "rm -rf" }), undefined);
+  assert.deepEqual(parseWebviewMessage({ type: "sign_in_google" }), { type: "sign_in_google" });
+  assert.deepEqual(parseWebviewMessage({ type: "select_model" }), { type: "select_model" });
+  assert.equal(parseWebviewMessage({ type: "sign_in_google", access_token: "tok" }), undefined);
   assert.deepEqual(parseWebviewMessage({ type: "send_message", prompt: "  hello  " }), {
     type: "send_message",
     prompt: "hello",
@@ -87,6 +90,24 @@ test("sse parser reads run_started without executing content", () => {
   assert.equal(events[1]?.data.content, "<img src=x>");
 });
 
+test("api client sendMessage omits model unless selected from catalog", async () => {
+  let body = "";
+  const client = new ByteBuddhiApiClient(
+    async (_input, init) => {
+      body = String(init?.body ?? "");
+      return new Response('event: done\ndata: {"type":"done"}\n\n', { status: 200 });
+    },
+    () => "http://127.0.0.1:8000",
+    async () => "token",
+  );
+  await client.sendMessage("conv", "hello");
+  assert.equal(JSON.parse(body).content, "hello");
+  assert.equal("model" in JSON.parse(body), false);
+  await client.sendMessage("conv", "hello", undefined, { provider: "openai", model: "gpt-4o" });
+  assert.deepEqual(JSON.parse(body).model, { provider: "openai", model: "gpt-4o" });
+  assert.equal("base_url" in JSON.parse(body), false);
+});
+
 test("api client sendMessage does not retry after success path", async () => {
   let calls = 0;
   const client = new ByteBuddhiApiClient(
@@ -115,7 +136,7 @@ test("api client does not retry a timeout as a second send", async () => {
   assert.equal(calls, 1);
 });
 
-test("package metadata registers the Phase 9 command set", () => {
+test("package metadata registers the command set", () => {
   const manifest = JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as {
     engines: { vscode: string };
     contributes: { commands: Array<{ command: string }> };
@@ -127,7 +148,10 @@ test("package metadata registers the Phase 9 command set", () => {
     "bytebuddhi.cancelTask",
     "bytebuddhi.showStatus",
     "bytebuddhi.signIn",
+    "bytebuddhi.signInWithGoogle",
+    "bytebuddhi.signInWithGitHub",
     "bytebuddhi.signOut",
+    "bytebuddhi.selectModel",
   ]) {
     assert.ok(commands.has(command), command);
   }

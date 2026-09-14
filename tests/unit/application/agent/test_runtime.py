@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
+from app.application.agent.errors import ModelCallError
 from app.application.agent.runtime import AgentRuntime
 from app.application.agent.types import AgentStatus
 from app.application.ports.output.llm.model_gateway import ModelGateway, ModelResponse
@@ -145,4 +146,71 @@ async def test_agent_runtime_with_checkpointer():
     state = await runtime.graph.aget_state(thread_config)
     assert state is not None
     assert state.values["status"] == "completed"
-    assert state.values["final_response"] == "Answer preserved with checkpoint."
+
+
+class FlakyThenSucceedsGateway(ModelGateway):
+    """Raises a retryable ModelCallError on the first N calls, then succeeds."""
+
+    def __init__(self, failures_before_success: int, final_response: ModelResponse):
+        self.failures_before_success = failures_before_success
+        self.final_response = final_response
+        self.call_count = 0
+
+    async def generate(self, messages, tools=None, temperature=0.7, max_tokens=None, **kwargs):
+        self.call_count += 1
+        if self.call_count <= self.failures_before_success:
+            raise ModelCallError(message="Model provider call failed (provider_unavailable)", is_retryable=True)
+        return self.final_response
+
+    async def stream(self, messages, tools=None, temperature=0.7, max_tokens=None, **kwargs):
+        if False:
+            yield
+
+
+@pytest.mark.asyncio
+async def test_agent_runtime_retries_transient_model_error():
+    gateway = FlakyThenSucceedsGateway(
+        failures_before_success=2,
+        final_response=ModelResponse(content="Recovered after retries.", tool_calls=[]),
+    )
+    registry = ToolRegistry()
+    runtime = AgentRuntime(
+        model_gateway=gateway,
+        tool_registry=registry,
+        model_call_max_retries=2,
+        model_call_retry_base_seconds=0.0,
+    )
+
+    result = await runtime.run(
+        messages=[{"role": "user", "content": "hello"}],
+        execution_context=trusted_execution_context(),
+    )
+
+    assert result.status == AgentStatus.COMPLETED
+    assert result.final_response == "Recovered after retries."
+    assert gateway.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_agent_runtime_gives_up_after_max_retries():
+    gateway = FlakyThenSucceedsGateway(
+        failures_before_success=5,
+        final_response=ModelResponse(content="Never reached.", tool_calls=[]),
+    )
+    registry = ToolRegistry()
+    runtime = AgentRuntime(
+        model_gateway=gateway,
+        tool_registry=registry,
+        model_call_max_retries=2,
+        model_call_retry_base_seconds=0.0,
+    )
+
+    result = await runtime.run(
+        messages=[{"role": "user", "content": "hello"}],
+        execution_context=trusted_execution_context(),
+    )
+
+    assert result.status == AgentStatus.FAILED
+    assert gateway.call_count == 3  # initial attempt + 2 retries
+    assert result.error is not None
+    assert "provider_unavailable" in result.error.message

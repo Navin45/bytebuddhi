@@ -74,6 +74,42 @@ async def test_runtime_observes_pre_cancelled_token() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_cancels_in_flight_generate() -> None:
+    gateway = AsyncMock()
+    started = asyncio.Event()
+
+    async def slow(*_args: object, **_kwargs: object) -> MagicMock:
+        started.set()
+        await asyncio.sleep(30)
+        response = MagicMock()
+        response.has_tool_calls = False
+        response.content = "should-not-return"
+        return response
+
+    gateway.generate.side_effect = slow
+    runtime = AgentRuntime(model_gateway=gateway, tool_registry=ToolRegistry(), llm_timeout_seconds=None)
+    token = CancellationToken()
+    ctx = ExecutionContext(
+        user_id="u",
+        project_id="p",
+        conversation_id=None,
+        run_id="run_inflight",
+        workspace_id="ws",
+    )
+    run_task = asyncio.create_task(
+        runtime.run(
+            messages=[{"role": "user", "content": "hi"}],
+            execution_context=ctx,
+            cancellation_token=token,
+        )
+    )
+    await started.wait()
+    token.cancel()
+    state = await asyncio.wait_for(run_task, timeout=2)
+    assert state.status == AgentStatus.CANCELLED
+
+
+@pytest.mark.asyncio
 async def test_runtime_wait_for_timeout_propagates() -> None:
     gateway = AsyncMock()
 

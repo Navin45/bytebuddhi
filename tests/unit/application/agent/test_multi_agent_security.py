@@ -1,4 +1,4 @@
-"""Adversarial security tests for Phase 6 Multi-Agent Runtime (Attacks A through H)."""
+"""Adversarial security tests for multi-agent runtime (Attacks A through H)."""
 
 import asyncio
 from unittest.mock import AsyncMock

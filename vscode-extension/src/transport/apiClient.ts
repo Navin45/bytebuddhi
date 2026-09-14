@@ -11,6 +11,20 @@ export interface ApiProject {
   local_path?: string | null;
 }
 
+export interface ApiModel {
+  provider: string;
+  model: string;
+  display_name: string;
+  capabilities: string[];
+  available: boolean;
+}
+
+export interface ModelCatalog {
+  default_provider: string;
+  default_model: string;
+  models: ApiModel[];
+}
+
 export interface FetchLike {
   (input: string, init?: RequestInit): Promise<Response>;
 }
@@ -54,6 +68,31 @@ export class ByteBuddhiApiClient {
     return { accessToken: body.access_token, refreshToken: body.refresh_token };
   }
 
+  async exchangeOauthCode(code: string): Promise<TokenPair> {
+    const response = await this.fetchImpl(`${this.apiRoot()}/auth/oauth/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!response.ok) {
+      throw new ByteBuddhiApiError("Authentication failed", response.status);
+    }
+    const body = (await response.json()) as { access_token: string; refresh_token: string };
+    return { accessToken: body.access_token, refreshToken: body.refresh_token };
+  }
+
+  async authProviders(): Promise<{ google: boolean; github: boolean }> {
+    const response = await this.fetchImpl(`${this.apiRoot()}/auth/providers`, { method: "GET" });
+    if (!response.ok) {
+      throw new ByteBuddhiApiError("Server unavailable", response.status);
+    }
+    return (await response.json()) as { google: boolean; github: boolean };
+  }
+
+  async logout(): Promise<void> {
+    await this.fetchImpl(`${this.apiRoot()}/auth/logout`, { method: "POST" });
+  }
+
   async refresh(refreshToken: string): Promise<TokenPair> {
     const response = await this.fetchImpl(`${this.apiRoot()}/auth/refresh`, {
       method: "POST",
@@ -72,6 +111,11 @@ export class ByteBuddhiApiClient {
     return (await response.json()) as ApiProject[];
   }
 
+  async listModels(): Promise<ModelCatalog> {
+    const response = await this.authorized("/models");
+    return (await response.json()) as ModelCatalog;
+  }
+
   async createConversation(projectId?: string): Promise<{ id: string }> {
     const response = await this.authorized("/chat/conversations", {
       method: "POST",
@@ -84,12 +128,16 @@ export class ByteBuddhiApiClient {
     conversationId: string,
     content: string,
     signal?: AbortSignal,
+    model?: { provider: string; model: string },
   ): Promise<SseEvent[]> {
     const response = await this.authorized(
       `/chat/conversations/${conversationId}/messages`,
       {
         method: "POST",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(model ? { model } : {}),
+        }),
         signal,
       },
     );

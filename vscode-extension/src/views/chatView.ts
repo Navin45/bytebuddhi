@@ -18,7 +18,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     private readonly context: vscode.ExtensionContext,
     private readonly client: ByteBuddhiApiClient,
     private readonly output: vscode.OutputChannel,
-  ) {}
+    private readonly hasSession: () => Promise<boolean>,
+  ) {
+    this.session.modelProvider = context.workspaceState.get<string>("bytebuddhi.modelProvider");
+    this.session.modelName = context.workspaceState.get<string>("bytebuddhi.modelName");
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -35,11 +39,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           this.output.appendLine("Ignored invalid webview message");
           return;
         }
+        if (message.type === "ready") {
+          this.post({ type: "auth", signedIn: await this.hasSession() });
+          this.post({ type: "model", label: this.modelLabel() });
+        }
         if (message.type === "send_message") {
           await this.runPrompt(message.prompt);
         }
         if (message.type === "cancel_task") {
           await this.cancel();
+        }
+        if (message.type === "sign_in") {
+          await vscode.commands.executeCommand("bytebuddhi.signIn");
+        }
+        if (message.type === "sign_in_google") {
+          await vscode.commands.executeCommand("bytebuddhi.signInWithGoogle");
+        }
+        if (message.type === "sign_in_github") {
+          await vscode.commands.executeCommand("bytebuddhi.signInWithGitHub");
+        }
+        if (message.type === "select_model") {
+          await this.selectModel();
         }
       }),
     );
@@ -65,6 +85,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.session.conversationId,
         prompt,
         this.abort.signal,
+        this.session.modelProvider && this.session.modelName
+          ? { provider: this.session.modelProvider, model: this.session.modelName }
+          : undefined,
       );
       let answer = "";
       let runId = this.session.runId;
@@ -132,6 +155,50 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.output.appendLine(redactSecrets(message));
       }
     }
+  }
+
+  async selectModel(): Promise<void> {
+    try {
+      const catalog = await this.client.listModels();
+      const items = catalog.models
+        .filter((item) => item.available)
+        .map((item) => ({
+          label: item.display_name,
+          description: `${item.provider}/${item.model}`,
+          provider: item.provider,
+          model: item.model,
+        }));
+      if (items.length === 0) {
+        vscode.window.showWarningMessage("No available models are configured on the server");
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(items, {
+        title: "ByteBuddhi model",
+        ignoreFocusOut: true,
+      });
+      if (!picked) {
+        return;
+      }
+      this.session.modelProvider = picked.provider;
+      this.session.modelName = picked.model;
+      await this.context.workspaceState.update("bytebuddhi.modelProvider", picked.provider);
+      await this.context.workspaceState.update("bytebuddhi.modelName", picked.model);
+      this.post({ type: "model", label: this.modelLabel() });
+      vscode.window.showInformationMessage(`Using ${picked.provider}/${picked.model}`);
+    } catch (error) {
+      const message = error instanceof ByteBuddhiApiError ? error.message : "Could not load models";
+      vscode.window.showErrorMessage(message);
+    }
+  }
+
+  private modelLabel(): string {
+    return this.session.modelProvider && this.session.modelName
+      ? `${this.session.modelProvider}/${this.session.modelName}`
+      : "Auto";
+  }
+
+  notifyAuthState(signedIn: boolean): void {
+    this.post({ type: "auth", signedIn });
   }
 
   async showStatus(): Promise<void> {

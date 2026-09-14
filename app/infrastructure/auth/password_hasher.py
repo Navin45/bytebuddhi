@@ -54,7 +54,7 @@ class PasswordHasher:
         # Return as string
         return hashed.decode("utf-8")
 
-    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
+    def verify_password(self, plain_password: str, hashed_password: str | None) -> bool:
         """Verify a password against a hash.
 
         Compares a plain text password with a stored hash to verify
@@ -63,11 +63,13 @@ class PasswordHasher:
 
         Args:
             plain_password: Plain text password to verify
-            hashed_password: Stored password hash
+            hashed_password: Stored password hash, or None when no password is set
 
         Returns:
             bool: True if password matches hash, False otherwise
         """
+        if not hashed_password:
+            return False
         try:
             # Convert to bytes
             password_bytes = plain_password.encode("utf-8")

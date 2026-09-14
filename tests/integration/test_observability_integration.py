@@ -1,4 +1,4 @@
-"""End-to-end integration test for Phase 7 Observability across the full runtime hierarchy.
+"""End-to-end observability integration across the runtime hierarchy.
 
 Validates that running a compound agent workflow:
 1. Emits root orchestration and child run spans.

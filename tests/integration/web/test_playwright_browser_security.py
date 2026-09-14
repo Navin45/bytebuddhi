@@ -13,6 +13,7 @@ They must not be treated as a pass.
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -36,6 +37,12 @@ from tests.fixtures.web.fakes import StaticResolver
 pytestmark = pytest.mark.playwright_browser
 
 _SKIP_REASON = "Playwright integration: NOT EXECUTED -- browser runtime unavailable"
+
+
+def _browser_unavailable() -> None:
+    if os.environ.get("BYTEBUDDHI_REQUIRE_PLAYWRIGHT", "").strip().lower() in {"1", "true", "yes"}:
+        pytest.fail(_SKIP_REASON)
+    pytest.skip(_SKIP_REASON)
 
 
 class _ServerState:
@@ -119,7 +126,7 @@ async def _renderer(policy: UrlSafetyPolicy, **limit_overrides: Any):
     try:
         from app.infrastructure.web.render.playwright_renderer import PlaywrightWebRenderer
     except ImportError:
-        pytest.skip(_SKIP_REASON)
+        _browser_unavailable()
     limits = WebResearchLimits(
         render_timeout_seconds=float(limit_overrides.get("render_timeout_seconds", 8.0)),
         max_render_pages=int(limit_overrides.get("max_render_pages", 2)),
@@ -130,7 +137,7 @@ async def _renderer(policy: UrlSafetyPolicy, **limit_overrides: Any):
         await renderer._ensure_browser()
     except Exception:
         await renderer.aclose()
-        pytest.skip(_SKIP_REASON)
+        _browser_unavailable()
     return renderer
 
 

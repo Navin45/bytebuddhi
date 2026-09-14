@@ -44,11 +44,19 @@ class ConversationResponse(TimestampMixin):
         from_attributes = True
 
 
+class ModelSelection(BaseModel):
+    """Server-authorized model choice. Endpoints and API keys are not accepted."""
+
+    provider: str = Field(..., min_length=1, max_length=64)
+    model: str = Field(..., min_length=1, max_length=128)
+
+
 class MessageCreateRequest(BaseModel):
     """Request schema for sending a message in a conversation."""
 
-    content: str = Field(..., min_length=1, description="Message content")
+    content: str = Field(..., min_length=1, max_length=32000, description="Message content")
     parent_message_id: UUID | None = Field(default=None, description="Parent message ID for threading")
+    model: ModelSelection | None = Field(default=None, description="Optional catalog model override")
 
 
 class MessageResponse(BaseModel):
@@ -84,6 +92,7 @@ class ChatRequest(BaseModel):
     stream: bool = Field(default=True, description="Whether to stream the response")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     max_tokens: int | None = Field(default=None, ge=1, le=8000, description="Maximum tokens to generate")
+    model: ModelSelection | None = Field(default=None, description="Optional catalog model override")
 
 
 class ChatResponse(BaseModel):

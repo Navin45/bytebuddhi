@@ -1,4 +1,4 @@
-# Phase 8 — CLI
+# CLI
 
 The ByteBuddhi CLI is a **thin terminal interface** over the same application path used by the REST API. It is not a second agent runtime, policy engine, workspace resolver, or persistence system.
 
@@ -28,10 +28,13 @@ There is no second auth system. The CLI authenticates a **local trusted principa
 
 1. `--user-id <uuid>`
 2. else `BYTEBUDDHI_USER_ID`
+3. else `User.id` from `bytebuddhi login` (`~/.bytebuddhi/credentials.json`)
 
 Unknown or inactive users exit with code `3`. The prompt cannot supply `user_id`, `project_id`, or workspace identity.
 
-Server/JWT remote-client mode is not implemented in Phase 8.
+`bytebuddhi login --provider google` or `--provider github` opens the ByteBuddhi API OAuth URL in a browser. After the backend callback, paste the one-time code (`--code` or stdin). The CLI stores ByteBuddhi JWTs only; it never embeds Google/GitHub client secrets. `bytebuddhi logout` deletes the local credential file. Expired stored tokens require `bytebuddhi login` again.
+
+`run` / `chat` still execute in-process through `ExecuteTaskUseCase` using that `User.id`. They do not send Google or GitHub tokens to the runtime. See [Authentication](authentication.md).
 
 ## Project and workspace selection
 
@@ -58,6 +61,7 @@ Primary syntax:
 bytebuddhi run "Explain this repository"
 bytebuddhi run --prompt "Explain this repository"
 bytebuddhi run --project <uuid> --json "Run the tests and summarize failures"
+bytebuddhi run --provider openai --model gpt-4-turbo-preview "Summarize this module"
 ```
 
 Do not pass both a positional prompt and `--prompt`.
@@ -72,11 +76,25 @@ Non-interactive: pipe lines on stdin. JSON/quiet modes do not print a prompt.
 
 Read-only inspection of projects owned by the authenticated user. Another user's project is denied.
 
+### `bytebuddhi models`
+
+Lists catalog models (provider, id, availability). Does not print keys or endpoints.
+
+### `bytebuddhi login` / `bytebuddhi logout`
+
+```bash
+bytebuddhi login --provider google
+bytebuddhi login --provider github --code <one-time-code>
+bytebuddhi logout
+```
+
+Browser sign-in against the API (`BYTEBUDDHI_API_URL`, default `http://127.0.0.1:8000`). Credentials are written to `BYTEBUDDHI_CONFIG_DIR` or `~/.bytebuddhi/credentials.json`.
+
 ### `bytebuddhi health`
 
 Read-only database ping. Does not start an agent run.
 
-Artifact get/list commands are not included in Phase 8. The CLI prints artifact **references** when the runtime archives large output; it does not dump artifact bodies.
+Artifact get/list commands are not included. The CLI prints artifact **references** when the runtime archives large output; it does not dump artifact bodies.
 
 There is no `bytebuddhi exec` shell command.
 
@@ -128,9 +146,9 @@ The CLI does not independently override tool, agent, orchestration, or web-resea
 
 Uses the existing `Settings` model (`.env` / environment). The CLI does not add `CLISettings`.
 
-Useful variables: `BYTEBUDDHI_USER_ID`, `BYTEBUDDHI_PROJECT_ID`, `BYTEBUDDHI_OUTPUT`, `BYTEBUDDHI_QUIET`, plus existing `WORKSPACE_MODE`, `WORKSPACE_ROOT`, `DATABASE_URL`, provider keys.
+Useful variables: `BYTEBUDDHI_USER_ID`, `BYTEBUDDHI_PROJECT_ID`, `BYTEBUDDHI_API_URL`, `BYTEBUDDHI_CONFIG_DIR`, `BYTEBUDDHI_OUTPUT`, `BYTEBUDDHI_QUIET`, plus existing `WORKSPACE_MODE`, `WORKSPACE_ROOT`, `DATABASE_URL`, provider keys.
 
-Do not print JWT, API keys, passwords, or tokens. There is no `bytebuddhi config` dump command in Phase 8.
+Do not print JWT, API keys, passwords, or tokens. There is no `bytebuddhi config` dump command.
 
 ## Security notes
 
@@ -138,7 +156,7 @@ Do not print JWT, API keys, passwords, or tokens. There is no `bytebuddhi config
 - It does not bypass project authorization, tool policy, workspace containment, artifact ownership, or execution identity.
 - Filesystem paths from `--cwd` are resolved to an owned project, then `WorkspaceResolutionService` enforces containment.
 - Web research runs only through the existing `web_research` tool. The CLI does not execute commands suggested by web content and does not print raw HTML.
-- Observability uses the Phase 7 tracer/meter. There is no CLI-specific telemetry backend.
+- Observability uses the application tracer/meter. There is no CLI-specific telemetry backend.
 
 ## CI example
 

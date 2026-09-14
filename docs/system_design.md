@@ -161,7 +161,7 @@ ByteBuddhi implements an enterprise telemetry architecture conforming to the Ope
 | Failure Scenario | Mitigation Strategy | Result |
 |---|---|---|
 | **LLM Rate Limits (HTTP 429)** | Exponential backoff with jitter inspecting `Retry-After` header. | Requests retry safely without overwhelming upstream APIs. |
-| **LLM Provider Outage** | Pluggable `ModelGateway` with fallback support from OpenAI to Anthropic. | Continuous service availability during provider degradation. |
+| **LLM Provider Outage** | Selected model fails with a controlled `FAILED` run. There is no silent failover to another provider. | Honest failure instead of unexpected model substitution. |
 | **Subprocess Hang / Deadlock** | `asyncio.wait_for` timeout watchdog on process streams. | Process terminated; structured `TimeoutError` returned. |
 | **Child Agent Critical Failure** | Cascading cooperative cancellation via `asyncio.Event`. | Sibling sub-agents cancel cleanly, preserving token budgets. |
 | **Telemetry Network Drop** | Application ports catch all telemetry exceptions defensively. | Business agent execution completes with zero interruption. |

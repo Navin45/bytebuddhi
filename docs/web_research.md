@@ -35,7 +35,7 @@ Application code never imports DuckDuckGo, httpx, or Playwright types. Provider 
 
 The first adapter talks to DuckDuckGo's public HTML endpoint. Configuration (`WEB_SEARCH_PROVIDER`, `WEB_SEARCH_ENDPOINT`, timeouts, User-Agent) lives in infrastructure settings. The agent only sees a `web_research` capability.
 
-**Historical note — Tavily removal:** Phase 7.6 removed the proprietary Tavily SDK, `TavilySearchService`, `TAVILY_API_KEY`, and all executable/configuration references. Search is no longer a vendor-specific integration. Do not reintroduce that SDK.
+**Historical note — Tavily removal:** The proprietary Tavily SDK, `TavilySearchService`, `TAVILY_API_KEY`, and all executable/configuration references were removed. Search is no longer a vendor-specific integration. Do not reintroduce that SDK.
 
 ## Fetch pipeline
 
@@ -83,7 +83,7 @@ This is not unrestricted browsing or a crawl engine.
 
 ## ArtifactStore integration
 
-Large extracted markdown is stored via the existing Phase 3 `ArtifactStore` under the trusted `project_id` from `ExecutionContext` (projected through `ToolExecutionContext`). The model receives title, URL, bounded preview, provenance, and `artifact_id` — not the full document.
+Large extracted markdown is stored via the existing `ArtifactStore` under the trusted `project_id` from `ExecutionContext` (projected through `ToolExecutionContext`). The model receives title, URL, bounded preview, provenance, and `artifact_id` — not the full document.
 
 Project A cannot read Project B's artifacts. Model-supplied `user_id` / `project_id` / `workspace` arguments are ignored.
 
@@ -129,7 +129,7 @@ No persistent web cache in this phase. Duplicate URLs are dropped within a singl
 
 ## Observability
 
-Spans: `web.research`, `web.search`, `web.fetch`, `web.extract`, `web.render` via Phase 7 `Tracer`/`Meter` ports (no OpenTelemetry imports in application code).
+Spans: `web.research`, `web.search`, `web.fetch`, `web.extract`, `web.render` via application `Tracer`/`Meter` ports (no OpenTelemetry imports in application code).
 
 Metric labels are low-cardinality (`provider_type`, `execution_status`, `extraction_method`, `content_type`). Full URLs, queries, artifact IDs, and raw HTML are not recorded.
 

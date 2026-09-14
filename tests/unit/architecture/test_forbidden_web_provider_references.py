@@ -5,7 +5,6 @@ from pathlib import Path
 _SCAN_ROOTS = [
     Path("app"),
     Path("pyproject.toml"),
-    Path("requirements.txt"),
     Path(".env.example"),
     Path("docker-compose.yml"),
     Path("tests"),
@@ -31,7 +30,7 @@ def _should_skip(path: Path) -> bool:
     if path.name in _SKIP_NAMES:
         return True
     allowed = {".py", ".toml", ".txt", ".yml", ".yaml", ".example", ".md", ".ini", ".cfg", ".env"}
-    named = {"pyproject.toml", "requirements.txt", ".env.example", "docker-compose.yml"}
+    named = {"pyproject.toml", ".env.example", "docker-compose.yml"}
     return path.suffix not in allowed and path.name not in named
 
 

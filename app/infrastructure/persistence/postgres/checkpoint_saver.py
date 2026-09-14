@@ -8,7 +8,7 @@ import json
 from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import (
@@ -46,7 +46,7 @@ class CheckpointModel(Base):
 
     __tablename__ = "agent_checkpoints"
 
-    id: Mapped[str] = mapped_column(String(255), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     thread_id: Mapped[str] = mapped_column(String(255), index=True)
     checkpoint_id: Mapped[str] = mapped_column(String(255), unique=True)
     parent_checkpoint_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

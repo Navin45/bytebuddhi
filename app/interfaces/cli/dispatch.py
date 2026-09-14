@@ -79,6 +79,8 @@ async def dispatch(
                 conversation_id=conversation,
                 json_mode=json_mode,
                 quiet=quiet,
+                model_provider=getattr(args, "provider", None),
+                model_name=getattr(args, "model", None),
             )
         if command == "chat":
             user_id, project_id = await resolve_identity(app, args)
@@ -95,6 +97,8 @@ async def dispatch(
                 quiet=quiet,
                 stdin=stdin,
                 stderr=stderr,
+                model_provider=getattr(args, "provider", None),
+                model_name=getattr(args, "model", None),
             )
         if command == "project":
             user_id, _ = await resolve_identity(app, args)
@@ -107,6 +111,24 @@ async def dispatch(
             raise CliError("Specify a project command: list or show", ExitCode.USAGE_ERROR)
         if command == "health":
             return await app.health(json_mode=json_mode)
+        if command == "models":
+            return await app.list_models(json_mode=json_mode)
+        if command == "login":
+            from app.interfaces.cli.oauth_login import login as oauth_login
+
+            return await oauth_login(
+                provider=getattr(args, "provider", None),
+                code=getattr(args, "code", None),
+                api_url=getattr(args, "api_url", None),
+                json_mode=json_mode,
+                stdin=stdin,
+                stdout=app.stdout,
+                stderr=stderr,
+            )
+        if command == "logout":
+            from app.interfaces.cli.oauth_login import logout as oauth_logout
+
+            return oauth_logout(json_mode=json_mode, stdout=app.stdout)
         raise CliError(f"Unknown command: {command}", ExitCode.USAGE_ERROR)
     except CliError:
         raise
@@ -127,6 +149,8 @@ async def chat_loop(
     quiet: bool,
     stdin: TextIO,
     stderr: TextIO,
+    model_provider: str | None = None,
+    model_name: str | None = None,
 ) -> int:
     conversation: UUID | str | None = conversation_id
     last_code = int(ExitCode.SUCCESS)
@@ -144,6 +168,8 @@ async def chat_loop(
             conversation_id=conv,
             json_mode=json_mode,
             quiet=quiet,
+            model_provider=model_provider,
+            model_name=model_name,
         )
         if app.last_conversation_id is not None:
             conversation = app.last_conversation_id

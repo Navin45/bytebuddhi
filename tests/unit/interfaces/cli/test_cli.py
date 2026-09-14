@@ -83,6 +83,13 @@ def test_help_and_version_exit_zero() -> None:
     assert main(["--help"]) == int(ExitCode.SUCCESS)
     assert main(["--version"]) == int(ExitCode.SUCCESS)
     assert main(["run", "--help"]) == int(ExitCode.SUCCESS)
+    assert main(["models", "--help"]) == int(ExitCode.SUCCESS)
+
+
+def test_run_accepts_provider_and_model_flags() -> None:
+    args = build_parser().parse_args(["run", "--provider", "openai", "--model", "gpt-test", "hello"])
+    assert args.provider == "openai"
+    assert args.model == "gpt-test"
 
 
 def test_missing_command_is_usage_error() -> None:
@@ -239,8 +246,9 @@ async def test_cancelled_agent_status_uses_timeout_exit_code(monkeypatch: pytest
     assert code == int(ExitCode.TIMEOUT_CANCELLED)
 
 
-def test_missing_user_id_is_auth_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_user_id_is_auth_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.delenv("BYTEBUDDHI_USER_ID", raising=False)
+    monkeypatch.setenv("BYTEBUDDHI_CONFIG_DIR", str(tmp_path))
     with pytest.raises(CliError) as exc:
         resolve_user_id(None)
     assert exc.value.exit_code == ExitCode.AUTH_FAILURE

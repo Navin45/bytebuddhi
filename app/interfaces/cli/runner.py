@@ -98,6 +98,21 @@ async def async_execute(
 
     include_runtime = args.command in {"run", "chat"}
     try:
+        if args.command in {"login", "logout"}:
+            from app.interfaces.cli.oauth_login import login as oauth_login
+            from app.interfaces.cli.oauth_login import logout as oauth_logout
+
+            if args.command == "logout":
+                return oauth_logout(json_mode=json_mode, stdout=stdout)
+            return await oauth_login(
+                provider=getattr(args, "provider", None),
+                code=getattr(args, "code", None),
+                api_url=getattr(args, "api_url", None),
+                json_mode=json_mode,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+            )
         if app is not None:
             return await _await_with_signals(
                 dispatch(args, app, json_mode=json_mode, quiet=quiet, stdin=stdin, stderr=stderr),

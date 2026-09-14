@@ -175,5 +175,41 @@ def json_health_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def json_models_payload(
+    *,
+    default_provider: str,
+    default_model: str,
+    models: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "default_provider": default_provider,
+        "default_model": default_model,
+        "models": list(models),
+        "errors": [],
+    }
+
+
+def write_human_models(
+    *,
+    default_provider: str,
+    default_model: str,
+    models: Sequence[dict[str, Any]],
+    stream: TextIO = sys.stdout,
+) -> None:
+    stream.write(f"default: {default_provider}/{default_model}\n")
+    if not models:
+        stream.write("(no models registered)\n")
+        return
+    current = ""
+    for item in models:
+        provider = str(item.get("provider", ""))
+        if provider != current:
+            stream.write(f"{provider}\n")
+            current = provider
+        flag = "available" if item.get("available") else "unavailable"
+        stream.write(f"  {item.get('model')} ({flag})\n")
+
+
 def conversation_id_str(value: UUID | str) -> str:
     return str(value)

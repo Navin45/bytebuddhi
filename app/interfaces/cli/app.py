@@ -7,6 +7,7 @@ from typing import Any, TextIO
 from uuid import UUID
 
 from app.application.agent.types import AgentStatus
+from app.application.ports.output.llm.model_catalog import ModelCatalog
 from app.application.ports.output.repository.user_repository import UserRepository
 from app.application.runtime.cancellation import CancellationToken
 from app.application.use_cases.agent.execute_task import ExecuteTaskCommand, ExecuteTaskUseCase
@@ -18,8 +19,10 @@ from app.interfaces.cli.exit_codes import ExitCode
 from app.interfaces.cli.render import (
     envelope_from_result,
     json_health_payload,
+    json_models_payload,
     json_project_payload,
     json_projects_payload,
+    write_human_models,
     write_human_project,
     write_human_projects,
     write_human_result,
@@ -40,6 +43,7 @@ class CliApp:
         resolve_local_project: ResolveProjectByLocalPathUseCase,
         user_repository: UserRepository,
         health_check: Callable[[], Awaitable[dict[str, Any]]] | None = None,
+        model_catalog: ModelCatalog | None = None,
         stdout: TextIO,
         stderr: TextIO,
     ) -> None:
@@ -49,6 +53,7 @@ class CliApp:
         self.resolve_local_project = resolve_local_project
         self.user_repository = user_repository
         self.health_check = health_check
+        self.model_catalog = model_catalog
         self.stdout = stdout
         self.stderr = stderr
         self.last_conversation_id: UUID | str | None = None
@@ -82,6 +87,8 @@ class CliApp:
         conversation_id: UUID | None,
         json_mode: bool,
         quiet: bool,
+        model_provider: str | None = None,
+        model_name: str | None = None,
     ) -> int:
         if self.execute_task is None:
             raise CliError("Task execution is not available for this command", ExitCode.CONFIG_FAILURE)
@@ -95,6 +102,8 @@ class CliApp:
                     project_id=project_id,
                     conversation_id=conversation_id,
                     cancellation_token=self.cancellation_token,
+                    model_provider=model_provider,
+                    model_name=model_name,
                 )
             )
         finally:
@@ -140,3 +149,35 @@ class CliApp:
                     continue
                 self.stdout.write(f"{key}: {value}\n")
         return int(ExitCode.SUCCESS if payload.get("status") == "healthy" else ExitCode.EXECUTION_FAILURE)
+
+    async def list_models(self, *, json_mode: bool) -> int:
+        if self.model_catalog is None:
+            raise CliError("Model catalog is not available", ExitCode.CONFIG_FAILURE)
+        default = self.model_catalog.default_ref()
+        models = [
+            {
+                "provider": item.provider,
+                "model": item.model,
+                "display_name": item.display_name,
+                "available": item.available,
+                "capabilities": [cap.value for cap in item.capabilities],
+            }
+            for item in self.model_catalog.list_models()
+        ]
+        if json_mode:
+            write_json(
+                json_models_payload(
+                    default_provider=default.provider,
+                    default_model=default.model,
+                    models=models,
+                ),
+                stream=self.stdout,
+            )
+        else:
+            write_human_models(
+                default_provider=default.provider,
+                default_model=default.model,
+                models=models,
+                stream=self.stdout,
+            )
+        return int(ExitCode.SUCCESS)

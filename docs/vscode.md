@@ -1,4 +1,4 @@
-# Phase 9 — VS Code Extension
+# VS Code Extension
 
 The ByteBuddhi VS Code extension is a **thin IDE client**. It talks to the existing HTTP API. It is not an agent runtime, tool executor, workspace authorizer, or second persistence/telemetry system.
 
@@ -31,11 +31,13 @@ Press **F5** on the `Run Extension` launch config in `vscode-extension/.vscode/l
 
 ## Authentication
 
-**ByteBuddhi: Sign In** posts to `/api/v1/auth/login`. Access and refresh tokens are stored only in VS Code `SecretStorage`.
+**ByteBuddhi: Sign In** posts to `/api/v1/auth/login`. **Continue with Google** / **Continue with GitHub** open the backend OAuth login URL (`client=vscode`). The backend exchanges the provider code and redirects to `vscode://bytebuddhi.bytebuddhi/oauth?code=` with a short-lived one-time ByteBuddhi exchange code. The extension calls `POST /api/v1/auth/oauth/exchange` and stores the resulting JWTs in `SecretStorage`.
+
+The extension does not contain OAuth client secrets and does not call Google or GitHub APIs.
 
 They are never written to `settings.json`, webview HTML, OutputChannel, or source.
 
-**ByteBuddhi: Sign Out** deletes secrets and clears client conversation state.
+**ByteBuddhi: Sign Out** deletes secrets and clears client conversation state. See [Authentication](authentication.md).
 
 ## Configuration (non-secret)
 
@@ -46,11 +48,14 @@ They are never written to `settings.json`, webview HTML, OutputChannel, or sourc
 
 Workspace folder path is matched against `GET /api/v1/projects` `local_path` as a convenience. The extension never treats that match as authorization.
 
+Selected models come from the API catalog (`ByteBuddhi: Select Model`). The extension does not implement providers.
+
 ## Commands
 
 | Command | Behavior |
 |---|---|
 | Sign In / Sign Out | JWT session in SecretStorage |
+| Select Model | Loads `GET /api/v1/models` and stores the chosen catalog id locally |
 | Run Task | Prompt → `ExecuteTaskUseCase` via chat messages API |
 | Open Chat | Focus the ByteBuddhi webview |
 | Cancel Task | Abort the HTTP stream **and** `POST /api/v1/agent/runs/{run_id}/cancel` |

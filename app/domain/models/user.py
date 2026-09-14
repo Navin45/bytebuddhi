@@ -16,7 +16,7 @@ class User:
         id: UUID,
         email: str,
         username: str,
-        password_hash: str,
+        password_hash: str | None,
         created_at: datetime,
         updated_at: datetime,
         is_active: bool = True,
@@ -27,9 +27,9 @@ class User:
 
         Args:
             id: Unique user identifier
-            email: User email address
+            email: User email address (contact/login identifier, not a verified OAuth key)
             username: Unique username
-            password_hash: Hashed password
+            password_hash: Hashed password, or None for OAuth-only accounts
             created_at: Account creation timestamp
             updated_at: Last update timestamp
             is_active: Whether account is active
@@ -50,7 +50,7 @@ class User:
     def create(
         email: str,
         username: str,
-        password_hash: str,
+        password_hash: str | None = None,
         api_key: str | None = None,
     ) -> "User":
         """Factory method to create a new user.
@@ -58,7 +58,7 @@ class User:
         Args:
             email: User email address
             username: Unique username
-            password_hash: Hashed password
+            password_hash: Hashed password, or None for OAuth-only accounts
             api_key: Optional API key
 
         Returns:
@@ -113,3 +113,7 @@ class User:
         """
         self.password_hash = new_password_hash
         self.updated_at = datetime.utcnow()
+
+    def has_password(self) -> bool:
+        """Return True when a local password credential exists."""
+        return bool(self.password_hash)

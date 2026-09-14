@@ -64,7 +64,8 @@ async def test_openai_gateway_error_wrapping():
     gateway = OpenAIModelGateway(chat_model=mock_chat_model)
     with pytest.raises(ModelCallError) as exc_info:
         await gateway.generate([{"role": "user", "content": "test"}])
-    assert "API connection timeout" in str(exc_info.value)
+    assert "Model provider call failed" in str(exc_info.value)
+    assert exc_info.value.details.get("category") == "timeout"
     assert exc_info.value.is_retryable is True
 
 

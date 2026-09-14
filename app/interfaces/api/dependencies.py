@@ -48,6 +48,9 @@ from app.application.ports.output.repository.conversation_repository import (
 from app.application.ports.output.repository.embedding_repository import (
     EmbeddingRepository,
 )
+from app.application.ports.output.repository.external_identity_repository import (
+    ExternalIdentityRepository,
+)
 from app.application.ports.output.repository.file_repository import FileRepository
 from app.application.ports.output.repository.message_repository import (
     MessageRepository,
@@ -65,6 +68,7 @@ from app.infrastructure.persistence.postgres.repositories import (
     CodeChunkRepositoryImpl,
     ConversationRepositoryImpl,
     EmbeddingRepositoryImpl,
+    ExternalIdentityRepositoryImpl,
     FileRepositoryImpl,
     MessageRepositoryImpl,
     ProjectRepositoryImpl,
@@ -103,6 +107,12 @@ async def get_user_repository(
         UserRepository: User repository instance
     """
     return UserRepositoryImpl(db)
+
+
+async def get_external_identity_repository(
+    db: AsyncSession = Depends(get_db),
+) -> ExternalIdentityRepository:
+    return ExternalIdentityRepositoryImpl(db)
 
 
 async def get_project_repository(
@@ -265,10 +275,16 @@ async def get_embedding_provider() -> LLMProvider:
 
 
 def get_model_gateway() -> ModelGateway:
-    """Get ModelGateway instance for agent tool execution."""
-    from app.infrastructure.llm.provider_factory import create_model_gateway
+    """Get the routing ModelGateway (provider adapters behind the catalog)."""
+    from app.infrastructure.llm.provider_factory import create_routing_gateway
 
-    return create_model_gateway()
+    return create_routing_gateway()
+
+
+def get_model_catalog() -> Any:
+    from app.infrastructure.llm.provider_factory import build_model_catalog
+
+    return build_model_catalog()
 
 
 def get_workspace() -> Any:
@@ -354,7 +370,7 @@ def get_command_executor(
 def get_tool_registry(
     command_executor: Any = Depends(get_command_executor),
 ) -> Any:
-    """Get ToolRegistry with Phase 1 and Phase 2 tools registered."""
+    """Get ToolRegistry with built-in tools registered."""
     from app.application.tools.builtin.command_tools import create_command_tool
     from app.application.tools.builtin.echo_tool import register_echo_tool
     from app.application.tools.builtin.filesystem_tools import create_filesystem_tools
@@ -500,7 +516,7 @@ async def get_agent_runtime(
     tracer: Any = Depends(get_telemetry_tracer),
     meter: Any = Depends(get_telemetry_meter),
 ) -> Any:
-    """Get AgentRuntime configured with Phase 1-5 capabilities and Postgres checkpoint saver."""
+    """Get AgentRuntime configured with registered capabilities and Postgres checkpoint saver."""
     from app.interfaces.composition import assemble_agent_runtime
 
     return assemble_agent_runtime(
@@ -571,6 +587,7 @@ async def get_execute_task_use_case(
     agent_runtime: Any = Depends(get_agent_runtime),
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
+    model_catalog: Any = Depends(get_model_catalog),
 ) -> Any:
     """Get ExecuteTaskUseCase instance."""
     from app.application.use_cases.agent.execute_task import ExecuteTaskUseCase
@@ -580,4 +597,39 @@ async def get_execute_task_use_case(
         agent_runtime=agent_runtime,
         conversation_repo=conversation_repo,
         message_repo=message_repo,
+        model_catalog=model_catalog,
+    )
+
+
+def get_oauth_service(
+    users: UserRepository = Depends(get_user_repository),
+    identities: ExternalIdentityRepository = Depends(get_external_identity_repository),
+    http_client: Any = Depends(get_external_http_client),
+    tracer: Any = Depends(get_telemetry_tracer),
+) -> Any:
+    """Assemble OAuthService for the current request. Provider SDKs stay in adapters."""
+    from app.application.auth.config import OAuthRuntimeConfig
+    from app.application.auth.oauth_service import OAuthService
+    from app.infrastructure.auth.oauth.factory import build_oauth_registry
+    from app.infrastructure.auth.oauth.state import get_oauth_state_store
+    from app.infrastructure.config.settings import settings as app_settings
+
+    config = OAuthRuntimeConfig(
+        google_enabled=app_settings.google_oauth_enabled,
+        github_enabled=app_settings.github_oauth_enabled,
+        google_redirect_uri=app_settings.google_redirect_uri,
+        github_redirect_uri=app_settings.github_redirect_uri,
+        state_ttl_seconds=app_settings.oauth_state_ttl_seconds,
+        exchange_ttl_seconds=app_settings.oauth_exchange_ttl_seconds,
+        post_login_redirect=app_settings.oauth_post_login_redirect,
+        vscode_redirect=app_settings.oauth_vscode_redirect,
+        cli_redirect=app_settings.oauth_cli_redirect,
+    )
+    return OAuthService(
+        registry=build_oauth_registry(app_settings, http_client),
+        state_store=get_oauth_state_store(),
+        users=users,
+        identities=identities,
+        config=config,
+        tracer=tracer,
     )

@@ -4,6 +4,8 @@ export class ClientSession {
   conversationId?: string;
   runId?: string;
   projectId?: string;
+  modelProvider?: string;
+  modelName?: string;
   status: UiStatus = "idle";
   inflight = false;
   lastClientRequestId?: string;
@@ -47,5 +49,7 @@ export class ClientSession {
   clearAuth(): void {
     this.resetConversation();
     this.projectId = undefined;
+    this.modelProvider = undefined;
+    this.modelName = undefined;
   }
 }

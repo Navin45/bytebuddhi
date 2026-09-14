@@ -9,6 +9,9 @@ from app.infrastructure.persistence.postgres.repositories.conversation_repositor
 from app.infrastructure.persistence.postgres.repositories.embedding_repository_impl import (
     EmbeddingRepositoryImpl,
 )
+from app.infrastructure.persistence.postgres.repositories.external_identity_repository_impl import (
+    ExternalIdentityRepositoryImpl,
+)
 from app.infrastructure.persistence.postgres.repositories.file_repository_impl import (
     FileRepositoryImpl,
 )
@@ -26,6 +29,7 @@ __all__ = [
     "CodeChunkRepositoryImpl",
     "ConversationRepositoryImpl",
     "EmbeddingRepositoryImpl",
+    "ExternalIdentityRepositoryImpl",
     "FileRepositoryImpl",
     "MessageRepositoryImpl",
     "ProjectRepositoryImpl",

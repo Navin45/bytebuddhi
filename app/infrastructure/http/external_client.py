@@ -144,6 +144,7 @@ class ExternalHttpClient:
         params: dict[str, Any] | None = None,
         json_data: Any | None = None,
         json: Any | None = None,
+        data: dict[str, str] | None = None,
         timeout: float | None = None,
         allow_mutation_retry: bool = False,
     ) -> Any:
@@ -156,6 +157,7 @@ class ExternalHttpClient:
             headers=headers,
             params=params,
             json=body,
+            data=data,
             timeout=timeout,
             allow_mutation_retry=allow_mutation_retry,
         )
@@ -210,6 +212,7 @@ class ExternalHttpClient:
         headers: dict[str, str] | None = None,
         params: dict[str, Any] | None = None,
         json: Any | None = None,
+        data: dict[str, str] | None = None,
         timeout: float | None = None,
         allow_mutation_retry: bool = False,
     ) -> Any:
@@ -245,6 +248,7 @@ class ExternalHttpClient:
                             headers=headers,
                             params=params,
                             json=json,
+                            data=data,
                             timeout=req_timeout,
                         )
                         span.set_attribute(SpanAttributes.HTTP_STATUS, resp.status_code)

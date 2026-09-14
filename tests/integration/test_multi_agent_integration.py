@@ -1,4 +1,4 @@
-"""End-to-end integration test for Phase 6 Multi-Agent Runtime.
+"""End-to-end integration test for multi-agent runtime.
 
 Exercises a compound workflow:
 Parent Task

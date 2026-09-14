@@ -32,7 +32,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.request_counts: dict[str, dict[str, list[datetime]]] = defaultdict(lambda: {"minute": [], "hour": []})
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in ["/", "/health", "/api/v1/health", "/api/docs", "/api/redoc"]:
+        if request.url.path in {
+            "/",
+            "/health",
+            "/api/v1/health",
+            "/api/v1/health/live",
+            "/api/v1/health/ready",
+            "/api/v1/health/db",
+            "/api/docs",
+            "/api/redoc",
+        }:
             return await call_next(request)
 
         client_ip = self._get_client_ip(request)

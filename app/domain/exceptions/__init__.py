@@ -1,5 +1,6 @@
 """Domain exceptions for ByteBuddhi."""
 
+from app.domain.exceptions.auth_exceptions import AuthenticationError, DuplicateExternalIdentityError
 from app.domain.exceptions.base import DomainException
 from app.domain.exceptions.conversation_exceptions import (
     ConversationNotFoundException,
@@ -29,9 +30,11 @@ from app.domain.exceptions.web_exceptions import (
 )
 
 __all__ = [
+    "AuthenticationError",
     "ContentTooLarge",
     "ConversationNotFoundException",
     "DomainException",
+    "DuplicateExternalIdentityError",
     "ExecutionContextRequired",
     "FetchFailed",
     "FetchTimeout",

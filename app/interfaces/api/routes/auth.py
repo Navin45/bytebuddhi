@@ -225,19 +225,17 @@ async def change_password(
     Raises:
         HTTPException: If current password is incorrect
     """
-    # Verify current password
-    if not password_hasher.verify_password(request.current_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect",
-        )
-
-    # Ensure new password differs from current
-    if request.current_password == request.new_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must differ from current password",
-        )
+    if current_user.has_password():
+        if not password_hasher.verify_password(request.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+        if request.current_password == request.new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must differ from current password",
+            )
 
     # Hash new password and update user
     new_hash = password_hasher.hash_password(request.new_password)
@@ -323,3 +321,12 @@ async def confirm_password_reset(
     await user_repo.update(user)
 
     logger.info("Password reset confirmed", user_id=str(user.id))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout() -> None:
+    """Client-side logout for stateless JWTs.
+
+    Access tokens remain valid until expiry. Clients must discard stored tokens.
+    """
+    return None

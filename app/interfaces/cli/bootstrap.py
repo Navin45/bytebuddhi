@@ -30,6 +30,7 @@ async def cli_session(
     setup_logging(stream=sys.stderr, level="DEBUG" if debug else None)
     try:
         settings.validate_runtime_configuration()
+        settings.validate_model_settings()
     except RuntimeError as exc:
         raise CliError(str(exc), ExitCode.CONFIG_FAILURE) from exc
 
@@ -76,6 +77,7 @@ async def cli_session(
             resolve_local_project=graph.resolve_local_project,
             user_repository=graph.user_repository,
             health_check=_health,
+            model_catalog=graph.model_catalog,
             stdout=stdout,
             stderr=stderr,
         )

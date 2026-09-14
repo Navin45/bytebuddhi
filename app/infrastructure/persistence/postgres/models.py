@@ -27,7 +27,7 @@ class UserModel(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -40,6 +40,32 @@ class UserModel(Base):
     )
     conversations: Mapped[list["ConversationModel"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+    external_identities: Mapped[list["ExternalIdentityModel"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ExternalIdentityModel(Base):
+    """SQLAlchemy model for linked external login identities."""
+
+    __tablename__ = "external_identities"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(32))
+    provider_subject: Mapped[str] = mapped_column(String(255))
+    email_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url_snapshot: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["UserModel"] = relationship(back_populates="external_identities", lazy="selectin")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_external_identity_provider_subject"),
+        Index("ix_external_identities_user_id", "user_id"),
     )
 
 

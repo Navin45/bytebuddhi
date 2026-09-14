@@ -6,10 +6,12 @@ from uuid import UUID, uuid4
 
 from app.application.agent.runtime import AgentRuntime
 from app.application.agent.state import AgentRunState
+from app.application.ports.output.llm.model_catalog import ModelCatalog
 from app.application.ports.output.logger import get_logger
 from app.application.ports.output.repository.conversation_repository import ConversationRepository
 from app.application.ports.output.repository.message_repository import MessageRepository
 from app.application.runtime.cancellation import CancellationToken
+from app.application.runtime.events import ExecutionEventSink
 from app.application.workspace.resolution_service import WorkspaceResolutionService
 from app.domain.models.conversation import Conversation
 from app.domain.models.execution_context import ExecutionContext
@@ -33,6 +35,9 @@ class ExecuteTaskCommand:
     agent_id: str | None = None
     history_limit: int = 10
     cancellation_token: CancellationToken | None = None
+    event_sink: ExecutionEventSink | None = None
+    model_provider: str | None = None
+    model_name: str | None = None
 
 
 @dataclass
@@ -55,11 +60,13 @@ class ExecuteTaskUseCase:
         agent_runtime: AgentRuntime,
         conversation_repo: ConversationRepository | None = None,
         message_repo: MessageRepository | None = None,
+        model_catalog: ModelCatalog | None = None,
     ) -> None:
         self.workspace_resolution = workspace_resolution_service
         self.agent_runtime = agent_runtime
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
+        self.model_catalog = model_catalog
 
     async def execute(self, command: ExecuteTaskCommand) -> ExecuteTaskResult:
         """Execute a task with trusted context and isolated workspace."""
@@ -129,6 +136,12 @@ class ExecuteTaskUseCase:
         )
 
         thread_id = str(conv_id) if conv_id is not None else run_id
+        selected_provider = command.model_provider
+        selected_model = command.model_name
+        if self.model_catalog is not None:
+            descriptor = self.model_catalog.resolve(command.model_provider, command.model_name)
+            selected_provider = descriptor.provider
+            selected_model = descriptor.model
         run_state = await self.agent_runtime.run(
             messages=messages,
             workspace=workspace,
@@ -136,6 +149,9 @@ class ExecuteTaskUseCase:
             execution_context=execution_context,
             config={"configurable": {"thread_id": thread_id}},
             cancellation_token=command.cancellation_token,
+            event_sink=command.event_sink,
+            model_provider=selected_provider,
+            model_name=selected_model,
         )
 
         response_text = run_state.final_response or ""

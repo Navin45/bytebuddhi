@@ -54,6 +54,8 @@ def map_exception(exc: BaseException) -> CliError:
     if isinstance(exc, AgentError):
         if exc.code in {AgentErrorCode.TIMEOUT, AgentErrorCode.CANCELLED}:
             return CliError(sanitize_message(exc.message), ExitCode.TIMEOUT_CANCELLED)
+        if exc.code == AgentErrorCode.VALIDATION_ERROR:
+            return CliError(sanitize_message(exc.message), ExitCode.USAGE_ERROR)
         return CliError(sanitize_message(exc.message), ExitCode.EXECUTION_FAILURE)
     if isinstance(exc, TimeoutError):
         return CliError("Execution timed out", ExitCode.TIMEOUT_CANCELLED)

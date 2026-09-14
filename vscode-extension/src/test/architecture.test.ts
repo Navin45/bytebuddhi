@@ -34,6 +34,10 @@ test("extension source does not implement a second runtime or shell executor", (
     "execSync",
     "eval(",
     "new Function",
+    "GOOGLE_CLIENT_SECRET",
+    "GITHUB_CLIENT_SECRET",
+    "google-auth",
+    "@octokit",
   ];
   const hits: string[] = [];
   for (const file of files) {

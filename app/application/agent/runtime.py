@@ -5,6 +5,7 @@ Provides the inner agent execution loop orchestrated via LangGraph.
 
 import asyncio
 import time
+from contextlib import suppress
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -29,6 +30,7 @@ from app.application.ports.output.observability.meter import Meter
 from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
 from app.application.runtime.cancellation import CancellationToken
+from app.application.runtime.events import ExecutionEvent, ExecutionEventSink, ExecutionEventType
 from app.application.tools.context import ToolExecutionContext, auxiliary_metadata
 from app.application.tools.definition import ToolCall
 from app.application.tools.executor import ToolExecutor
@@ -42,6 +44,116 @@ from app.domain.models.workspace import Workspace
 logger = get_logger(__name__)
 
 
+async def _cancellable_generate(
+    model_gateway: ModelGateway,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    cancellation_token: CancellationToken | None,
+    timeout_seconds: float | None,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+) -> Any:
+    """Await generate() but abort when the run is cancelled or the timeout fires.
+
+    Cancelling the wrapping task requests the provider HTTP call to abort when
+    the client honours asyncio cancellation (httpx/LangChain async). If a
+    provider ignores cancellation, the connection may remain until its own
+    timeout; that limitation is documented in docs/production.md.
+    """
+    generate_kwargs: dict[str, Any] = {}
+    if provider:
+        generate_kwargs["provider"] = provider
+    if model:
+        generate_kwargs["model"] = model
+    generate_coro = model_gateway.generate(messages=messages, tools=tools, **generate_kwargs)
+    if timeout_seconds is not None and timeout_seconds > 0:
+        generate_coro = asyncio.wait_for(generate_coro, timeout=timeout_seconds)
+    generate_task = asyncio.create_task(generate_coro)
+    if cancellation_token is None:
+        try:
+            return await generate_task
+        except TimeoutError as exc:
+            raise ModelCallError(
+                message="LLM request timed out",
+                details={"timeout_seconds": timeout_seconds},
+                is_retryable=True,
+                cause=exc,
+            ) from exc
+    cancel_task = asyncio.create_task(cancellation_token.event.wait())
+    try:
+        done, pending = await asyncio.wait(
+            {generate_task, cancel_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for pending_task in pending:
+            pending_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await pending_task
+        if generate_task in done:
+            return generate_task.result()
+        raise asyncio.CancelledError
+    except TimeoutError as exc:
+        raise ModelCallError(
+            message="LLM request timed out",
+            details={"timeout_seconds": timeout_seconds},
+            is_retryable=True,
+            cause=exc,
+        ) from exc
+    except asyncio.CancelledError:
+        if not generate_task.done():
+            generate_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await generate_task
+        raise
+
+
+async def _generate_with_retry(
+    model_gateway: ModelGateway,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    cancellation_token: CancellationToken | None,
+    timeout_seconds: float | None,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    max_retries: int = 2,
+    retry_base_seconds: float = 1.0,
+) -> Any:
+    """Retry transient (is_retryable) model errors with exponential backoff.
+
+    Cancellation and non-retryable errors (e.g. bad request, auth failure) propagate
+    immediately without retrying.
+    """
+    attempt = 0
+    while True:
+        try:
+            return await _cancellable_generate(
+                model_gateway,
+                messages,
+                tools,
+                cancellation_token,
+                timeout_seconds,
+                provider=provider,
+                model=model,
+            )
+        except AgentError as ae:
+            if not ae.is_retryable or attempt >= max_retries:
+                raise
+            if cancellation_token is not None and cancellation_token.is_cancelled():
+                raise
+            delay = retry_base_seconds * (2**attempt)
+            logger.warning(
+                "Retrying transient model error",
+                error=str(ae),
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                delay_seconds=delay,
+            )
+            await asyncio.sleep(delay)
+            attempt += 1
+
+
 def create_agent_loop_graph(
     model_gateway: ModelGateway,
     tool_registry: ToolRegistry,
@@ -53,6 +165,12 @@ def create_agent_loop_graph(
     memory_orchestrator: MemoryOrchestrator | None = None,
     execution_context: ExecutionContext | None = None,
     cancellation_token: CancellationToken | None = None,
+    event_sink: ExecutionEventSink | None = None,
+    llm_timeout_seconds: float | None = None,
+    model_provider: str | None = None,
+    model_name: str | None = None,
+    model_call_max_retries: int = 2,
+    model_call_retry_base_seconds: float = 1.0,
 ) -> CompiledStateGraph:
     """Build and compile the inner agent loop StateGraph using LangGraph."""
 
@@ -82,7 +200,7 @@ def create_agent_loop_graph(
             }
 
         # 2. Retrieve relevant memories and build model context
-        tool_schemas = tool_registry.get_schemas_for_openai()
+        tool_schemas = tool_registry.get_tool_schemas()
         retrieved_memories = []
         if memory_orchestrator:
             if execution_context is None:
@@ -116,12 +234,28 @@ def create_agent_loop_graph(
         )
         messages = model_context.to_model_messages()
 
-        # 3. Invoke ModelGateway
+        # 3. Invoke ModelGateway (cancellable / bounded)
         try:
-            response = await model_gateway.generate(
-                messages=messages,
-                tools=tool_schemas if tool_schemas else None,
+            response = await _generate_with_retry(
+                model_gateway,
+                messages,
+                tool_schemas if tool_schemas else None,
+                cancellation_token,
+                llm_timeout_seconds,
+                provider=model_provider,
+                model=model_name,
+                max_retries=model_call_max_retries,
+                retry_base_seconds=model_call_retry_base_seconds,
             )
+        except asyncio.CancelledError:
+            if cancellation_token is not None and cancellation_token.is_cancelled():
+                return {
+                    "iteration": iteration,
+                    "status": AgentStatus.CANCELLED.value,
+                    "error": AgentCancelledError().to_dict(),
+                    "final_response": None,
+                }
+            raise
         except AgentError as ae:
             logger.error("ModelGateway error during agent loop", error=str(ae))
             return {
@@ -209,8 +343,24 @@ def create_agent_loop_graph(
                 cancellation_token=cancellation_token.event if cancellation_token is not None else None,
                 metadata=aux_metadata,
             )
+            if event_sink is not None:
+                event_sink.emit(
+                    ExecutionEvent(
+                        type=ExecutionEventType.TOOL_STARTED,
+                        run_id=run_id,
+                        payload={"tool_name": call.name},
+                    )
+                )
             res = await tool_executor.execute(call, context=ctx)
             results.append(res)
+            if event_sink is not None:
+                event_sink.emit(
+                    ExecutionEvent(
+                        type=ExecutionEventType.TOOL_COMPLETED,
+                        run_id=run_id,
+                        payload={"tool_name": res.name, "status": "error" if res.is_error else "ok"},
+                    )
+                )
 
             # Record execution observation into working memory
             if memory_orchestrator:
@@ -296,6 +446,9 @@ class AgentRuntime:
         memory_orchestrator: MemoryOrchestrator | None = None,
         tracer: Tracer | None = None,
         meter: Meter | None = None,
+        llm_timeout_seconds: float | None = 120.0,
+        model_call_max_retries: int = 2,
+        model_call_retry_base_seconds: float = 1.0,
     ):
         self.model_gateway = model_gateway
         self.tool_registry = tool_registry
@@ -308,6 +461,9 @@ class AgentRuntime:
         self.memory_orchestrator = memory_orchestrator
         self.tracer = tracer or NoOpTracer()
         self.meter = meter or NoOpMeter()
+        self.llm_timeout_seconds = llm_timeout_seconds
+        self.model_call_max_retries = model_call_max_retries
+        self.model_call_retry_base_seconds = model_call_retry_base_seconds
         self.orchestrator: object | None = None
 
         # Telemetry instruments
@@ -326,6 +482,9 @@ class AgentRuntime:
             workspace=self.workspace,
             memory_orchestrator=self.memory_orchestrator,
             execution_context=None,
+            llm_timeout_seconds=self.llm_timeout_seconds,
+            model_call_max_retries=self.model_call_max_retries,
+            model_call_retry_base_seconds=self.model_call_retry_base_seconds,
         )
 
     async def run(
@@ -341,6 +500,9 @@ class AgentRuntime:
         tool_executor: ToolExecutor | None = None,
         max_iterations: int | None = None,
         cancellation_token: CancellationToken | None = None,
+        event_sink: ExecutionEventSink | None = None,
+        model_provider: str | None = None,
+        model_name: str | None = None,
     ) -> AgentRunState:
         """Execute the agent loop for the given messages.
 
@@ -396,6 +558,12 @@ class AgentRuntime:
                 memory_orchestrator=self.memory_orchestrator,
                 execution_context=execution_context,
                 cancellation_token=cancellation_token,
+                event_sink=event_sink,
+                llm_timeout_seconds=self.llm_timeout_seconds,
+                model_provider=model_provider,
+                model_name=model_name,
+                model_call_max_retries=self.model_call_max_retries,
+                model_call_retry_base_seconds=self.model_call_retry_base_seconds,
             )
 
         run_config = config or {"configurable": {"thread_id": active_run_id}}
@@ -425,6 +593,8 @@ class AgentRuntime:
         ) as span:
             self._runs_counter.add(1, {"agent_role": "generalist", "execution_status": "running"})
             try:
+                if event_sink is not None:
+                    event_sink.emit(ExecutionEvent(type=ExecutionEventType.RUN_STARTED, run_id=active_run_id))
                 raw_result = await graph_to_use.ainvoke(initial_state, config=run_config)
                 state_res = AgentRunState.from_loop_state(raw_result)
                 if cancellation_token is not None and cancellation_token.is_cancelled():
@@ -447,6 +617,13 @@ class AgentRuntime:
                 else:
                     span.set_status(SpanStatus.OK)
 
+                if event_sink is not None:
+                    terminal = {
+                        AgentStatus.CANCELLED: ExecutionEventType.RUN_CANCELLED,
+                        AgentStatus.FAILED: ExecutionEventType.RUN_FAILED,
+                    }.get(state_res.status, ExecutionEventType.RUN_COMPLETED)
+                    event_sink.emit(ExecutionEvent(type=terminal, run_id=active_run_id))
+
                 logger.info(
                     "AgentRuntime run finished",
                     run_id=active_run_id,
@@ -457,6 +634,8 @@ class AgentRuntime:
             except asyncio.CancelledError:
                 if cancellation_token is not None:
                     cancellation_token.cancel()
+                if event_sink is not None:
+                    event_sink.emit(ExecutionEvent(type=ExecutionEventType.RUN_CANCELLED, run_id=active_run_id))
                 span.set_attribute(SpanAttributes.EXECUTION_STATUS, AgentStatus.CANCELLED.value)
                 # Re-raise so asyncio.wait_for timeouts and Task.cancel() keep working.
                 raise

@@ -20,6 +20,31 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Enable RLS and create policies for all tables."""
 
+    # auth.uid() is a Supabase-provided function (Supabase Auth/PostgREST), not
+    # part of vanilla PostgreSQL. Self-hosted Postgres (Docker, RDS, etc.) does
+    # not define it, so the CREATE POLICY statements below would fail there.
+    # These policies are transitional: a later migration (a9c8e7d6b5f4) drops
+    # them once ByteBuddhi's own JWT-based authorization became the enforced
+    # boundary, so a no-op stub is sufficient here. Only create the stub if
+    # auth.uid() is not already defined, so real Supabase databases keep their
+    # actual implementation untouched.
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'auth' AND p.proname = 'uid'
+            ) THEN
+                CREATE SCHEMA IF NOT EXISTS auth;
+                CREATE FUNCTION auth.uid() RETURNS uuid
+                LANGUAGE sql STABLE
+                AS $body$ SELECT NULL::uuid $body$;
+            END IF;
+        END
+        $$;
+    """)
+
     # Enable RLS on all tables
     op.execute("ALTER TABLE users ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE projects ENABLE ROW LEVEL SECURITY")

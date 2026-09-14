@@ -1,4 +1,4 @@
-"""Unit tests for Phase 2 filesystem and command tools integrated with ToolExecutor."""
+"""Unit tests for filesystem and command tools integrated with ToolExecutor."""
 
 from unittest.mock import AsyncMock, MagicMock
 

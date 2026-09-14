@@ -1,4 +1,4 @@
-"""Built-in deterministic echo tool for Phase 1 contract verification."""
+"""Built-in deterministic echo tool for contract verification."""
 
 from app.application.tools.definition import ToolDefinition
 from app.application.tools.registry import ToolRegistry
