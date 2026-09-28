@@ -36,12 +36,11 @@ module.exports = {
       { target: "nsis", arch: ["x64"] },
     ],
     icon: "build/icon.ico",
-    signingHashAlgorithms: ["sha256"],
-    // Authenticode signing — credentials from CI env:
-    //   CSC_LINK:            Base64-encoded PFX or file path
-    //   CSC_KEY_PASSWORD:    PFX password
-    sign: undefined, // uses default electron-builder signing when CSC_ env vars are set
     verifyUpdateCodeSignature: true,
+    // Authenticode uses CSC_LINK and CSC_KEY_PASSWORD when those are set.
+    signtoolOptions: {
+      signingHashAlgorithms: ["sha256"],
+    },
   },
   nsis: {
     oneClick: false,
@@ -83,10 +82,12 @@ module.exports = {
     category: "Development",
     maintainer: "ByteBuddhi <dev@bytebuddhi.dev>",
     desktop: {
-      Name: "ByteBuddhi",
-      Comment: "AI Coding Assistant",
-      Categories: "Development;IDE;",
-      StartupNotify: "true",
+      entry: {
+        Name: "ByteBuddhi",
+        Comment: "AI Coding Assistant",
+        Categories: "Development;IDE;",
+        StartupNotify: "true",
+      },
     },
   },
   appImage: {
