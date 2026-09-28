@@ -35,11 +35,12 @@ from app.infrastructure.persistence.postgres.models import UserModel
 from app.infrastructure.persistence.postgres.reaper_lock import PostgresReaperLock
 from app.infrastructure.persistence.postgres.run_store import SqlRunStore
 
-POSTGRES_URL = os.environ.get(
-    "BYTEBUDDHI_TEST_DATABASE_URL",
-    "postgresql+asyncpg://bytebuddhi:bytebuddhi-local@127.0.0.1:5432/bytebuddhi",
+POSTGRES_URL = (
+    os.environ.get("BYTEBUDDHI_TEST_DATABASE_URL")
+    or os.environ.get("DATABASE_URL")
+    or "postgresql+asyncpg://bytebuddhi:bytebuddhi-local@127.0.0.1:5432/bytebuddhi"
 )
-REDIS_URL = os.environ.get("BYTEBUDDHI_TEST_REDIS_URL", "redis://127.0.0.1:6379/15")
+REDIS_URL = os.environ.get("BYTEBUDDHI_TEST_REDIS_URL") or os.environ.get("REDIS_URL") or "redis://127.0.0.1:6379/15"
 
 
 def _record(user_id, *, key: str | None = None, prompt: str = "hello") -> RunRecord:

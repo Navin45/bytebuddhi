@@ -86,7 +86,9 @@ jobs:
       - name: Integration tests
         env:
           DATABASE_URL: "postgresql+asyncpg://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}"
+          BYTEBUDDHI_TEST_DATABASE_URL: "postgresql+asyncpg://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}"
           REDIS_URL: "redis://localhost:6379/0"
+          BYTEBUDDHI_TEST_REDIS_URL: "redis://localhost:6379/0"
           BYTEBUDDHI_REDIS_COORDINATION: "true"
           BYTEBUDDHI_REQUIRE_DISTRIBUTED: "1"
         run: uv run pytest tests/ -v --tb=short -m "not live_llm and not playwright_browser"
