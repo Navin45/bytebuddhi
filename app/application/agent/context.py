@@ -18,6 +18,23 @@ logger = get_logger(__name__)
 __all__ = ["ContextEngine", "ModelContext"]
 
 
+def _conversation_groups(messages: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Group each assistant tool call with the tool results that follow it.
+
+    The Responses API rejects a tool result whose function call was removed,
+    and it rejects a function call whose result was removed.
+    """
+    groups: list[list[dict[str, Any]]] = []
+    for message in messages:
+        if message.get("role") == "tool" and groups:
+            groups[-1].append(message)
+            continue
+        if message.get("role") == "tool":
+            continue
+        groups.append([message])
+    return groups
+
+
 class ContextEngine:
     """Constructs prompt and message contexts for LLM calls with budget enforcement."""
 
@@ -73,11 +90,12 @@ class ContextEngine:
         max_budget = budget_tokens if budget_tokens is not None else self.max_context_tokens
         truncated_sections: list[str] = []
 
-        # 1. Unprunable anchors: System prompt and latest message
+        # 1. Unprunable anchors: System prompt and the latest tool exchange
         system_base_tokens = self.estimate_tokens(system_prompt) + 4
-        last_msg = messages[-1] if messages else None
-        last_msg_tokens = self.estimate_message_tokens(last_msg) if last_msg else 0
-        anchor_tokens = system_base_tokens + last_msg_tokens
+        groups = _conversation_groups(messages)
+        last_group = groups[-1] if groups else []
+        last_group_tokens = sum(self.estimate_message_tokens(message) for message in last_group)
+        anchor_tokens = system_base_tokens + last_group_tokens
 
         # Check for unprunable anchor overflow
         if anchor_tokens > max_budget:
@@ -93,7 +111,7 @@ class ContextEngine:
             if artifacts:
                 truncated_sections.append("artifacts")
 
-            selected_messages = [last_msg] if last_msg else []
+            selected_messages = list(last_group)
             ctx = ModelContext(
                 system_prompt=system_prompt,
                 messages=selected_messages,
@@ -191,21 +209,19 @@ class ContextEngine:
                     truncated_sections.append("artifacts")
                     break
 
-        # 7. Conversation history (Lowest priority, oldest pruned first)
-        older_messages: list[dict[str, Any]] = []
-        if messages and len(messages) > 1:
-            for msg in reversed(messages[:-1]):
-                msg_tokens = self.estimate_message_tokens(msg)
-                if remaining_budget - msg_tokens >= 0:
-                    older_messages.append(msg)
-                    remaining_budget -= msg_tokens
-                else:
-                    truncated_sections.append("conversation_history")
-                    break
+        # 7. Conversation history (Lowest priority, oldest groups pruned first)
+        selected_older: list[list[dict[str, Any]]] = []
+        for group in reversed(groups[:-1]):
+            group_tokens = sum(self.estimate_message_tokens(message) for message in group)
+            if remaining_budget - group_tokens >= 0:
+                selected_older.append(group)
+                remaining_budget -= group_tokens
+            else:
+                truncated_sections.append("conversation_history")
+                break
 
-        selected_messages = [*reversed(older_messages)]
-        if last_msg:
-            selected_messages.append(last_msg)
+        selected_messages = [message for group in reversed(selected_older) for message in group]
+        selected_messages.extend(last_group)
 
         ctx = ModelContext(
             system_prompt=system_prompt,

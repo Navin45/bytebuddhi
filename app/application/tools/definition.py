@@ -73,6 +73,8 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    index: int | None = None
+    arguments_json: str = ""
 
 
 @dataclass

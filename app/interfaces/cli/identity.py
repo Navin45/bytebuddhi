@@ -3,6 +3,7 @@
 import os
 from uuid import UUID
 
+from app.interfaces.cli.credentials import StoredCredentials
 from app.interfaces.cli.errors import CliError
 from app.interfaces.cli.exit_codes import ExitCode
 
@@ -47,3 +48,48 @@ def _assert_credentials_usable(access_token: str, refresh_token: str) -> None:
     if jwt_handler.verify_token(refresh_token, token_type="refresh") is not None:
         return
     raise CliError("Session expired. Run bytebuddhi login again.", ExitCode.AUTH_FAILURE)
+
+
+def current_access_token(api_url: str | None = None) -> str:
+    """Return a usable access token, refreshing it when the saved one has expired."""
+    from app.infrastructure.auth.jwt_handler import jwt_handler
+    from app.interfaces.cli.credentials import CredentialStore
+
+    stored = CredentialStore().load()
+    if stored is None or not stored.access_token.strip():
+        raise CliError("Authentication required. Run bytebuddhi login.", ExitCode.AUTH_FAILURE)
+    if jwt_handler.verify_token(stored.access_token, token_type="access") is not None:
+        return stored.access_token.strip()
+    if jwt_handler.verify_token(stored.refresh_token, token_type="refresh") is None:
+        raise CliError("Session expired. Run bytebuddhi login again.", ExitCode.AUTH_FAILURE)
+    refreshed = _refresh_credentials(stored, api_url=api_url)
+    CredentialStore().save(refreshed)
+    return refreshed.access_token
+
+
+def _refresh_credentials(stored: StoredCredentials, *, api_url: str | None) -> StoredCredentials:
+    import httpx
+
+    from app.interfaces.cli.oauth_login import resolve_api_url
+
+    base = resolve_api_url(api_url)
+    try:
+        response = httpx.post(
+            f"{base}/api/v1/auth/refresh",
+            json={"refresh_token": stored.refresh_token},
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        raise CliError("Could not refresh the saved session.", ExitCode.AUTH_FAILURE) from exc
+    if response.status_code >= 400:
+        raise CliError("Session expired. Run bytebuddhi login again.", ExitCode.AUTH_FAILURE)
+    body = response.json()
+    access = body.get("access_token") if isinstance(body, dict) else None
+    refresh = body.get("refresh_token") if isinstance(body, dict) else None
+    if not isinstance(access, str) or not isinstance(refresh, str):
+        raise CliError("Session expired. Run bytebuddhi login again.", ExitCode.AUTH_FAILURE)
+    return StoredCredentials(
+        user_id=stored.user_id,
+        access_token=access,
+        refresh_token=refresh,
+    )

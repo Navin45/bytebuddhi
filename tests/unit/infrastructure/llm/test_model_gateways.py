@@ -1,11 +1,12 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.application.agent.errors import ModelCallError
 from app.application.ports.output.llm.model_gateway import ModelGateway
 from app.infrastructure.llm.anthropic_gateway import AnthropicModelGateway
+from app.infrastructure.llm.langchain_support import parse_chat_response, parse_stream_chunk
 from app.infrastructure.llm.openai_gateway import OpenAIModelGateway
 from app.infrastructure.llm.provider_factory import LLMProviderType, create_model_gateway
 
@@ -85,6 +86,16 @@ async def test_anthropic_gateway_generate():
     resp = await gateway.generate([{"role": "user", "content": "hi"}])
     assert resp.content == "Claude response"
     assert resp.finish_reason == "end_turn"
+
+
+def test_responses_api_text_blocks_become_assistant_text():
+    chunk = AIMessageChunk(content=[{"type": "text", "text": "ByteBuddhi "}])
+    parsed = parse_stream_chunk(chunk, provider="openai", model="gpt-5.6-sol")
+    assert parsed.content == "ByteBuddhi "
+
+    response = AIMessage(content=[{"type": "output_text", "text": "A coding assistant."}])
+    parsed_response = parse_chat_response(response, provider="openai", model="gpt-5.6-sol")
+    assert parsed_response.content == "A coding assistant."
 
 
 def test_factory_create_model_gateway():

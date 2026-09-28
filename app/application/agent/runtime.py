@@ -4,6 +4,7 @@ Provides the inner agent execution loop orchestrated via LangGraph.
 """
 
 import asyncio
+import json
 import time
 from contextlib import suppress
 from typing import Any
@@ -243,21 +244,56 @@ async def _stream_model(
         await _consume()
     return ModelResponse(
         content="".join(content_parts) or None,
-        tool_calls=tool_calls,
+        tool_calls=[_finalize_tool_call(call) for call in tool_calls if call.name],
         provider=provider,
         model=model,
     )
 
 
+def _finalize_tool_call(call: ToolCall) -> ToolCall:
+    fragment = call.arguments_json.strip()
+    if not fragment:
+        return call
+    try:
+        parsed = json.loads(fragment)
+    except json.JSONDecodeError:
+        return call
+    if not isinstance(parsed, dict):
+        return call
+    return ToolCall(id=call.id, name=call.name, arguments=parsed, index=call.index)
+
+
 def _merge_tool_call(calls: list[ToolCall], incoming: ToolCall) -> None:
-    if not incoming.id and not incoming.name:
-        return
+    target: int | None = None
     if incoming.id:
         for index, existing in enumerate(calls):
             if existing.id == incoming.id:
-                calls[index] = incoming
-                return
-    calls.append(incoming)
+                target = index
+                break
+    if target is None and incoming.index is not None:
+        for index, existing in enumerate(calls):
+            if existing.index == incoming.index:
+                target = index
+                break
+    if target is None and not incoming.id and not incoming.name:
+        if calls and (incoming.arguments or incoming.arguments_json):
+            target = len(calls) - 1
+        else:
+            return
+    if target is None:
+        calls.append(incoming)
+        return
+    existing = calls[target]
+    arguments = dict(existing.arguments)
+    if incoming.arguments:
+        arguments.update(incoming.arguments)
+    calls[target] = ToolCall(
+        id=incoming.id or existing.id,
+        name=incoming.name or existing.name,
+        arguments=arguments,
+        index=incoming.index if incoming.index is not None else existing.index,
+        arguments_json=existing.arguments_json + incoming.arguments_json,
+    )
 
 
 def create_agent_loop_graph(
@@ -382,7 +418,8 @@ def create_agent_loop_graph(
             }
 
         # 4. Process decision
-        if response.has_tool_calls:
+        named_tool_calls = [tc for tc in response.tool_calls if tc.name]
+        if named_tool_calls:
             # Model requested tool calls
             tool_call_dicts = [
                 {
@@ -390,7 +427,7 @@ def create_agent_loop_graph(
                     "name": tc.name,
                     "arguments": tc.arguments,
                 }
-                for tc in response.tool_calls
+                for tc in named_tool_calls
             ]
             assistant_msg = ContextEngine.format_assistant_message(
                 content=response.content,

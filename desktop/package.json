@@ -2,6 +2,13 @@
   "name": "bytebuddhi-desktop",
   "version": "0.1.4-rc.1",
   "private": true,
+  "description": "AI Coding Assistant",
+  "author": "ByteBuddhi <dev@bytebuddhi.dev>",
+  "homepage": "https://github.com/Navin45/bytebuddhi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Navin45/bytebuddhi.git"
+  },
   "type": "module",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.21.0",
@@ -19,7 +26,7 @@
     "pack": "electron-vite build && electron-builder --config electron-builder.config.cjs",
     "pack:win": "electron-vite build && electron-builder --config electron-builder.config.cjs --win",
     "pack:mac": "electron-vite build && electron-builder --config electron-builder.config.cjs --mac",
-    "pack:linux": "electron-vite build && electron-builder --config electron-builder.config.cjs --linux",
+    "pack:linux": "electron-vite build && electron-builder --config electron-builder.config.cjs --linux --publish never",
     "publish": "electron-vite build && electron-builder --config electron-builder.config.cjs --publish always"
   },
   "dependencies": {

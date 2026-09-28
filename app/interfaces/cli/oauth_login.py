@@ -32,7 +32,10 @@ def parse_login_provider(raw: str | None) -> IdentityProvider:
     try:
         return IdentityProvider(value)
     except ValueError as exc:
-        raise CliError("Provider must be google or github", ExitCode.USAGE_ERROR) from exc
+        raise CliError(
+            "Sign in with --provider google or --provider github.",
+            ExitCode.USAGE_ERROR,
+        ) from exc
 
 
 async def login(

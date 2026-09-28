@@ -86,8 +86,13 @@ jobs:
           name: python-dist
           path: dist/
 
+      - name: Select distributions
+        run: |
+          mkdir -p upload
+          cp dist/*.whl dist/*.tar.gz upload/
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/
+          packages-dir: upload/
           skip-existing: true

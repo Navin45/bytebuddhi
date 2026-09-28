@@ -13,7 +13,7 @@ from app.interfaces.cli.credentials import CredentialStore
 from app.interfaces.cli.dispatch import optional_prompt, resolve_project_arg, resolve_prompt
 from app.interfaces.cli.errors import CliError
 from app.interfaces.cli.exit_codes import ExitCode
-from app.interfaces.cli.identity import parse_uuid
+from app.interfaces.cli.identity import current_access_token, parse_uuid
 from app.interfaces.cli.render import (
     json_health_payload,
     json_models_payload,
@@ -189,14 +189,15 @@ def _token_for(args: Namespace) -> str | None:
 
 
 def _required_token(args: Namespace) -> str:
-    stored = CredentialStore().load()
-    token = stored.access_token.strip() if stored is not None else ""
-    if token:
-        return token
-    hint = "Authentication required. Run bytebuddhi login."
-    if getattr(args, "user_id", None) or (os.environ.get(USER_ID_ENV) or "").strip():
-        hint += " --user-id applies to --embedded mode and is not sent to the gateway."
-    raise CliError(hint, ExitCode.AUTH_FAILURE)
+    try:
+        return current_access_token(getattr(args, "gateway_url", None))
+    except CliError as exc:
+        if getattr(args, "user_id", None) or (os.environ.get(USER_ID_ENV) or "").strip():
+            raise CliError(
+                f"{exc.message} --user-id applies to --embedded mode and is not sent to the gateway.",
+                exc.exit_code,
+            ) from exc
+        raise
 
 
 async def _run(

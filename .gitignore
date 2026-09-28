@@ -134,6 +134,7 @@ vscode-extension/node_modules/
 vscode-extension/out/
 desktop/node_modules/
 desktop/out/
+desktop/release/
 desktop/test-results/
 desktop/playwright-report/
 desktop/blob-report/

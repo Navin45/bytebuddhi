@@ -207,3 +207,50 @@ def test_artifact_previews_budgeted():
     assert ctx.estimated_tokens <= 50
     assert "artifacts" in ctx.truncated_sections
     assert len(ctx.artifact_references) == 0
+
+
+def test_pruning_keeps_tool_results_with_their_calls():
+    engine = ContextEngine(max_context_tokens=80)
+    messages = [
+        {"role": "user", "content": "old question " * 30},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "call_old", "name": "web_research", "arguments": {}}],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_old",
+            "name": "web_research",
+            "content": "old page " * 40,
+        },
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "call_new", "name": "web_research", "arguments": {"query": "claude"}}],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_new",
+            "name": "web_research",
+            "content": "new page",
+        },
+    ]
+
+    ctx = engine.build_model_context(
+        system_prompt="Short prompt.",
+        messages=messages,
+        budget_tokens=80,
+    )
+
+    tool_results = [message for message in ctx.messages if message["role"] == "tool"]
+    call_ids = {
+        call["id"]
+        for message in ctx.messages
+        if message["role"] == "assistant"
+        for call in message.get("tool_calls", [])
+    }
+    assert tool_results
+    assert {message["tool_call_id"] for message in tool_results} <= call_ids
+    assert "call_old" not in call_ids
+    assert "call_new" in call_ids

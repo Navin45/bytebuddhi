@@ -4,12 +4,13 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.application.agent.errors import ModelCallError
-from app.application.agent.runtime import AgentRuntime
+from app.application.agent.runtime import AgentRuntime, _finalize_tool_call, _merge_tool_call
 from app.application.agent.types import AgentStatus
 from app.application.ports.output.llm.model_gateway import ModelGateway, ModelResponse
 from app.application.tools.builtin.echo_tool import register_echo_tool
 from app.application.tools.definition import ToolCall
 from app.application.tools.registry import ToolRegistry
+from app.infrastructure.llm.langchain_support import tool_call_from_mapping
 from tests.helpers.execution import trusted_execution_context
 
 
@@ -214,3 +215,47 @@ async def test_agent_runtime_gives_up_after_max_retries():
     assert gateway.call_count == 3  # initial attempt + 2 retries
     assert result.error is not None
     assert "provider_unavailable" in result.error.message
+
+
+def test_argument_deltas_stay_on_the_indexed_tool_call():
+    calls: list[ToolCall] = []
+    _merge_tool_call(calls, ToolCall(id="call_a", name="web_research", index=0))
+    _merge_tool_call(calls, ToolCall(id="call_b", name="web_research", index=1))
+    _merge_tool_call(
+        calls,
+        ToolCall(id="", name="", index=0, arguments_json='{"query":"latest claude"}'),
+    )
+
+    assert calls[0].arguments_json == '{"query":"latest claude"}'
+    assert calls[1].arguments_json == ""
+    finalized = _finalize_tool_call(calls[0])
+    assert finalized.arguments == {"query": "latest claude"}
+
+
+def test_streaming_tool_call_chunks_keep_the_name():
+    calls: list[ToolCall] = []
+    _merge_tool_call(
+        calls,
+        ToolCall(id="call_1", name="list_directory", arguments={}),
+    )
+    _merge_tool_call(
+        calls,
+        ToolCall(id="call_1", name="", arguments={"path": "."}),
+    )
+    _merge_tool_call(
+        calls,
+        ToolCall(id="", name="", arguments={"recursive": False}),
+    )
+
+    assert len(calls) == 1
+    assert calls[0].name == "list_directory"
+    assert calls[0].arguments == {"path": ".", "recursive": False}
+
+
+def test_missing_tool_call_id_stays_blank():
+    parsed = tool_call_from_mapping({"id": None, "name": None, "args": {"path": "."}})
+
+    assert parsed is not None
+    assert parsed.id == ""
+    assert parsed.name == ""
+    assert parsed.arguments == {"path": "."}
