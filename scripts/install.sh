@@ -130,7 +130,9 @@ echo ""
 
 # ── Download wheel ────────────────────────────────────────────────────
 
-WHEEL_NAME="bytebuddhi-${VERSION}-py3-none-any.whl"
+# PEP 440 drops the hyphen in pre-releases: 0.1.4-rc.1 -> 0.1.4rc1.
+WHEEL_VERSION=$(printf '%s' "$VERSION" | sed -E 's/-rc\./rc/; s/-a\./a/; s/-b\./b/')
+WHEEL_NAME="bytebuddhi-${WHEEL_VERSION}-py3-none-any.whl"
 CHECKSUMS_URL="${BASE_URL}/download/v${VERSION}/SHA256SUMS"
 WHEEL_URL="${BASE_URL}/download/v${VERSION}/${WHEEL_NAME}"
 

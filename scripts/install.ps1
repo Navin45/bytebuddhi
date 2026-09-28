@@ -94,7 +94,9 @@ Write-Host ""
 
 # ── Download wheel ────────────────────────────────────────────────────
 
-$wheelName = "bytebuddhi-$Version-py3-none-any.whl"
+# PEP 440 drops the hyphen in pre-releases: 0.1.4-rc.1 -> 0.1.4rc1.
+$wheelVersion = $Version -replace '-rc\.','rc' -replace '-a\.','a' -replace '-b\.','b'
+$wheelName = "bytebuddhi-$wheelVersion-py3-none-any.whl"
 $wheelUrl  = "$BaseUrl/download/v$Version/$wheelName"
 $sumsUrl   = "$BaseUrl/download/v$Version/SHA256SUMS"
 

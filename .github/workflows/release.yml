@@ -200,7 +200,9 @@ jobs:
         run: |
           VERSION="${{ needs.preflight.outputs.version }}"
           COMMIT="${{ github.sha }}"
-          WHEEL="bytebuddhi-${VERSION}-py3-none-any.whl"
+          # PEP 440 drops the hyphen in pre-releases: 0.1.4-rc.1 -> 0.1.4rc1.
+          WHEEL_VERSION=$(printf '%s' "$VERSION" | sed -E 's/-rc\./rc/; s/-a\./a/; s/-b\./b/')
+          WHEEL="bytebuddhi-${WHEEL_VERSION}-py3-none-any.whl"
           WHEEL_SHA=$(grep "$WHEEL" release-files/SHA256SUMS | awk '{print $1}')
           if [ -z "$WHEEL_SHA" ]; then
             echo "RELEASE BLOCKED: checksum missing for ${WHEEL}"
