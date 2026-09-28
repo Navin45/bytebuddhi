@@ -55,12 +55,11 @@ async def test_run_diagnostics_structure() -> None:
     assert "desktop" in diag
 
     assert diag["version"]["protocol"] == 1
-    assert (
-        "Windows DPAPI" in diag["authentication"]["backend"]
-        or "Secret Service" in diag["authentication"]["backend"]
-        or "Keychain" in diag["authentication"]["backend"]
-        or "Mock" in diag["authentication"]["backend"]
-    )
+    assert diag["authentication"]["backend"] in {
+        "Windows DPAPI",
+        "macOS Keychain",
+        "Machine-Isolated Encrypted Store",
+    }
 
 
 def test_export_support_bundle_creates_zip(tmp_path: Path) -> None:
