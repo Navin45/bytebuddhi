@@ -17,6 +17,7 @@ import sys
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
 from app.interfaces.cli.errors import CliError
@@ -53,34 +54,38 @@ class _WindowsDPAPI:
     def protect(data: bytes) -> bytes:
         import ctypes.wintypes
 
+        windll = cast(Any, ctypes).windll
+
         class DATA_BLOB(ctypes.Structure):
             _fields_ = [("cbData", ctypes.wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
         in_blob = DATA_BLOB(len(data), ctypes.cast(ctypes.create_string_buffer(data), ctypes.POINTER(ctypes.c_char)))
         out_blob = DATA_BLOB()
-        if not ctypes.windll.crypt32.CryptProtectData(
+        if not windll.crypt32.CryptProtectData(
             ctypes.byref(in_blob), "ByteBuddhi", None, None, None, 0, ctypes.byref(out_blob)
         ):
-            raise ctypes.WinError()
+            raise cast(Any, ctypes).WinError()
         buf = ctypes.string_at(out_blob.pbData, out_blob.cbData)
-        ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+        windll.kernel32.LocalFree(out_blob.pbData)
         return buf
 
     @staticmethod
     def unprotect(data: bytes) -> bytes:
         import ctypes.wintypes
 
+        windll = cast(Any, ctypes).windll
+
         class DATA_BLOB(ctypes.Structure):
             _fields_ = [("cbData", ctypes.wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
         in_blob = DATA_BLOB(len(data), ctypes.cast(ctypes.create_string_buffer(data), ctypes.POINTER(ctypes.c_char)))
         out_blob = DATA_BLOB()
-        if not ctypes.windll.crypt32.CryptUnprotectData(
+        if not windll.crypt32.CryptUnprotectData(
             ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)
         ):
-            raise ctypes.WinError()
+            raise cast(Any, ctypes).WinError()
         buf = ctypes.string_at(out_blob.pbData, out_blob.cbData)
-        ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+        windll.kernel32.LocalFree(out_blob.pbData)
         return buf
 
 

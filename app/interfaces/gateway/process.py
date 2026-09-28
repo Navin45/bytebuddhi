@@ -6,7 +6,7 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO, cast
 
 
 class GatewayLock:
@@ -136,7 +136,7 @@ def _windows_process_exists(pid: int) -> bool:
     import ctypes
     from ctypes import wintypes
 
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel = cast(Any, ctypes).WinDLL("kernel32", use_last_error=True)
     process_query = 0x1000
     still_active = 259
     kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -162,7 +162,7 @@ def _windows_terminate(pid: int) -> None:
     from ctypes import wintypes
 
     process_terminate = 0x0001
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel = cast(Any, ctypes).WinDLL("kernel32", use_last_error=True)
     kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel.OpenProcess.restype = wintypes.HANDLE
     kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
