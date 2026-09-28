@@ -65,7 +65,7 @@ jobs:
       - name: Verify clean install
         run: |
           uv venv /tmp/test-env
-          /tmp/test-env/bin/pip install dist/bytebuddhi-*.whl
+          uv pip install --python /tmp/test-env dist/bytebuddhi-*.whl
           INSTALLED=$(/tmp/test-env/bin/bytebuddhi --version 2>&1 | awk '{print $NF}')
           echo "Installed: $INSTALLED"
           if [ "$INSTALLED" != "${{ inputs.version }}" ]; then
