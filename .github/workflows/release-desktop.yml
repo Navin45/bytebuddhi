@@ -1,0 +1,102 @@
+name: release-desktop
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  attestations: write
+
+jobs:
+  build:
+    # Windows and macOS are frozen until Authenticode and Apple notarization
+    # credentials exist. Unsigned installers are not built or published.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.21.0"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify version
+        shell: bash
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${{ inputs.version }}" ]; then
+            echo "FAIL: package.json version $PKG_VERSION != tag ${{ inputs.version }}"
+            exit 1
+          fi
+
+      - name: Generate contracts
+        shell: bash
+        run: |
+          if command -v uv >/dev/null 2>&1; then
+            pnpm generate:contracts
+          elif [ -f renderer/src/generated/contracts.ts ]; then
+            echo "uv is not installed; using the committed desktop contracts."
+          else
+            echo "RELEASE BLOCKED: desktop contracts are missing and uv is not available."
+            exit 1
+          fi
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build desktop
+        run: pnpm pack:${{ matrix.platform }}
+
+      - name: List artifacts
+        shell: bash
+        run: find release/ -type f | head -30 || true
+
+      - name: Attest artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "desktop/release/${{ inputs.version }}/*"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            desktop/release/${{ inputs.version }}/*.exe
+            desktop/release/${{ inputs.version }}/*.dmg
+            desktop/release/${{ inputs.version }}/*.zip
+            desktop/release/${{ inputs.version }}/*.AppImage
+            desktop/release/${{ inputs.version }}/*.deb
+            desktop/release/${{ inputs.version }}/*.yml
+            desktop/release/${{ inputs.version }}/*.yaml
+            desktop/release/${{ inputs.version }}/*.blockmap
+          retention-days: 7
+          if-no-files-found: error

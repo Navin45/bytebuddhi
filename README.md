@@ -1,22 +1,49 @@
 # ByteBuddhi
 
-ByteBuddhi is an AI coding and agent platform. REST, CLI, and VS Code all execute the same path:
+ByteBuddhi is an AI coding and agent platform. The CLI and terminal interface talk to one gateway. The gateway is the existing FastAPI application. Application use cases stay authoritative.
 
 ```text
-Client
-  → ExecuteTaskUseCase
-  → trusted ExecutionContext
-  → AgentRuntime / MultiAgentOrchestrator
-  → ModelGateway → provider adapter
-  → ToolExecutor / ToolPolicyEngine
+Textual TUI / CLI
+        ↓
+GatewayClient
+        ↓
+FastAPI
+        ↓
+Run protocol
+        ↓
+AgentRuntime
 ```
+
+PostgreSQL is the durable source of truth for runs and events. Redis fans live notifications out to gateway workers. A WebSocket delivers those events to the client. Disconnecting the socket does not cancel the run. `POST /api/v1/runs/{run_id}/cancel` does.
+
+Phase 1 established the gateway transport. Phase 2 makes `POST /api/v1/runs` return `202` with `queued` and streams the run. It does not add a second agent runtime.
+
+```text
+CLI / TUI / VS Code
+        ↓
+ByteBuddhi Gateway
+        ↓
+FastAPI
+        ↓
+Application use cases
+        ↓
+AgentRuntime
+        ↓
+Models / Tools / Memory / MCP / DB
+```
+
+`bytebuddhi run --embedded` still calls `ExecuteTaskUseCase` in-process. That mode is explicit. A gateway failure does not fall back to it.
 
 The runtime does not change when you pick a different model. Provider credentials enable adapters; they do not redefine the architecture.
 
 ## Architecture
 
 ```text
-REST API / CLI / VS Code
+CLI / VS Code
+        ↓
+GatewayClient or HTTP
+        ↓
+FastAPI
         ↓
 ExecuteTaskUseCase
         ↓
@@ -40,9 +67,46 @@ ToolExecutor → Memory, Artifacts, Process, Web, MCP, Connectors
 - Connectors and MCP behind the same tool policy
 - Web research with SSRF controls
 - OpenTelemetry traces/metrics with redaction
-- JWT API (password, Google, GitHub), local CLI principal, thin VS Code client
+- JWT API (password, Google, GitHub). The gateway is the authority for CLI identity. `--embedded` can still use a local principal.
 
 ## Installation
+
+### One-Command CLI Install
+
+**macOS / Linux (bash/zsh):**
+```bash
+curl -fsSL https://github.com/Navin45/bytebuddhi/releases/latest/download/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://github.com/Navin45/bytebuddhi/releases/latest/download/install.ps1 | iex
+```
+
+### Desktop App
+
+Download installers from [GitHub Releases](https://github.com/Navin45/bytebuddhi/releases/latest):
+- **Windows:** `ByteBuddhi-Setup-<version>.exe`
+- **macOS:** `ByteBuddhi-<version>-arm64.dmg` / `ByteBuddhi-<version>-x64.dmg`
+- **Linux:** `ByteBuddhi-<version>-x64.AppImage` / `.deb`
+
+### Run
+
+```bash
+bytebuddhi
+```
+
+Launch the terminal UI:
+```bash
+bytebuddhi tui
+```
+
+Check for updates:
+```bash
+bytebuddhi update --check
+```
+
+### Developer Setup (From Source)
 
 ```bash
 git clone https://github.com/Navin45/bytebuddhi.git
@@ -106,11 +170,37 @@ POSTGRES_PASSWORD=... JWT_SECRET_KEY=... OPENAI_API_KEY=... \
 ```bash
 uv run bytebuddhi --help
 uv run bytebuddhi --version
+uv run bytebuddhi gateway start
+uv run bytebuddhi login --provider google
 uv run bytebuddhi models
-uv run bytebuddhi run --user-id <uuid> --project <uuid> --provider openai --model gpt-4-turbo-preview "Explain this repository"
+uv run bytebuddhi run "Explain this repository"
 ```
 
-The CLI is an in-process adapter over `ExecuteTaskUseCase`, not a second runtime. See [CLI](docs/cli.md).
+Normal CLI commands call the gateway with `Authorization: Bearer`. `bytebuddhi run` creates a run (`202`) and prints events as they arrive. `--json` prints one JSON object per line. The local gateway listens on `127.0.0.1:8765` unless you set `BYTEBUDDHI_GATEWAY_HOST` / `BYTEBUDDHI_GATEWAY_PORT` or pass `--host` / `--port`. `bytebuddhi serve` runs that same FastAPI app in the foreground. Production Gunicorn is unchanged.
+
+`bytebuddhi run --embedded` is the in-process path. See [CLI](docs/cli.md).
+
+## Terminal interface
+
+```bash
+uv run bytebuddhi tui
+```
+
+`bytebuddhi tui` is another gateway client. It uses the same URL resolution, local gateway startup, credentials, and `GatewayClient` as the CLI. It does not execute agents, and it does not read PostgreSQL or Redis.
+
+A local URL starts the managed gateway when it is not already running. `BYTEBUDDHI_GATEWAY_URL=https://...` connects to that remote gateway and does not start a local process. There is no embedded TUI mode. A missing credential tells you to run `bytebuddhi login`.
+
+Enter sends one run. Shift+Enter inserts a newline. Esc requests cancellation and the transcript waits for `run_cancelled`. Closing the TUI disconnects the client and leaves the run running on the gateway. A dropped WebSocket reconnects to the same run id, replays from the last sequence, and does not create a second run. `run_interrupted` is shown as INTERRUPTED.
+
+## Desktop
+
+```bash
+cd desktop
+pnpm install
+pnpm dev
+```
+
+The Electron app is a third client of the same gateway. It does not embed `AgentRuntime`. See [Desktop](docs/desktop.md).
 
 ## VS Code
 
@@ -146,14 +236,14 @@ Live LLM smoke tests are opt-in (`LIVE_LLM_PROVIDER` + provider key) and are not
 
 ## Limitations
 
-Documented in [Production](docs/production.md). Notably: process-local rate limits/admission, local/PV artifacts (not object storage), no durable event replay, Playwright off unless isolated, no silent model failover.
+Documented in [Production](docs/production.md) and [CLI](docs/cli.md). Notably: process-local rate limits, local/PV artifacts (not object storage), Playwright off unless isolated, no silent model failover. Run admission is global when Redis is available. A dead worker's run becomes `interrupted` and is not replayed. The CLI gateway client does not honor ambient `HTTP(S)_PROXY`, so bearer tokens are not forwarded to an implicit proxy. Closing a client does not cancel a run.
 
 ## Documentation
 
 - [Production](docs/production.md)
 - [Model gateway](docs/models.md)
 - [HLD](docs/hld.md) / [LLD](docs/lld.md)
-- [CLI](docs/cli.md) / [VS Code](docs/vscode.md)
+- [CLI](docs/cli.md) / [VS Code](docs/vscode.md) / [Desktop](docs/desktop.md)
 - [Web research](docs/web_research.md)
 
 ## License

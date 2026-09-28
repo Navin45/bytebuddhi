@@ -23,14 +23,20 @@ from app.application.agent.errors import (
 from app.application.agent.state import AgentLoopState, AgentRunState
 from app.application.agent.types import AgentStatus
 from app.application.memory.orchestrator import MemoryOrchestrator
-from app.application.ports.output.llm.model_gateway import ModelGateway
+from app.application.ports.output.llm.model_gateway import ModelGateway, ModelResponse
 from app.application.ports.output.logger import get_logger
 from app.application.ports.output.observability.context import get_correlation_context
 from app.application.ports.output.observability.meter import Meter
 from app.application.ports.output.observability.noop import NoOpMeter, NoOpTracer
 from app.application.ports.output.observability.tracer import SpanStatus, Tracer
 from app.application.runtime.cancellation import CancellationToken
-from app.application.runtime.events import ExecutionEvent, ExecutionEventSink, ExecutionEventType
+from app.application.runtime.events import (
+    ExecutionEvent,
+    ExecutionEventSink,
+    ExecutionEventType,
+    publish_execution_event,
+    sink_is_durable,
+)
 from app.application.tools.context import ToolExecutionContext, auxiliary_metadata
 from app.application.tools.definition import ToolCall
 from app.application.tools.executor import ToolExecutor
@@ -154,6 +160,106 @@ async def _generate_with_retry(
             attempt += 1
 
 
+async def _invoke_model(
+    model_gateway: ModelGateway,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    cancellation_token: CancellationToken | None,
+    event_sink: ExecutionEventSink | None,
+    run_id: str,
+    timeout_seconds: float | None,
+    *,
+    provider: str | None,
+    model: str | None,
+    max_retries: int,
+    retry_base_seconds: float,
+) -> ModelResponse:
+    """Stream assistant text when a durable sink is attached. Otherwise generate()."""
+    stream = getattr(model_gateway, "stream", None)
+    if sink_is_durable(event_sink) and stream is not None:
+        return await _stream_model(
+            stream,
+            messages,
+            tools,
+            cancellation_token,
+            event_sink,
+            run_id,
+            timeout_seconds,
+            provider=provider,
+            model=model,
+        )
+    generated = await _generate_with_retry(
+        model_gateway,
+        messages,
+        tools,
+        cancellation_token,
+        timeout_seconds,
+        provider=provider,
+        model=model,
+        max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+    )
+    if not isinstance(generated, ModelResponse):
+        raise ModelCallError(message="Model gateway returned an unexpected response", is_retryable=False)
+    return generated
+
+
+async def _stream_model(
+    stream: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    cancellation_token: CancellationToken | None,
+    event_sink: ExecutionEventSink | None,
+    run_id: str,
+    timeout_seconds: float | None,
+    *,
+    provider: str | None,
+    model: str | None,
+) -> ModelResponse:
+    content_parts: list[str] = []
+    tool_calls: list[ToolCall] = []
+
+    async def _consume() -> None:
+        async for chunk in stream(messages, tools, provider=provider, model=model):
+            if cancellation_token is not None and cancellation_token.is_cancelled():
+                raise asyncio.CancelledError
+            text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
+            if text:
+                content_parts.append(text)
+                await publish_execution_event(
+                    event_sink,
+                    ExecutionEvent(
+                        type=ExecutionEventType.ASSISTANT_DELTA,
+                        run_id=run_id,
+                        payload={"delta": text},
+                    ),
+                )
+            for call in getattr(chunk, "tool_calls", []) or []:
+                _merge_tool_call(tool_calls, call)
+
+    if timeout_seconds is not None and timeout_seconds > 0:
+        await asyncio.wait_for(_consume(), timeout=timeout_seconds)
+    else:
+        await _consume()
+    return ModelResponse(
+        content="".join(content_parts) or None,
+        tool_calls=tool_calls,
+        provider=provider,
+        model=model,
+    )
+
+
+def _merge_tool_call(calls: list[ToolCall], incoming: ToolCall) -> None:
+    if not incoming.id and not incoming.name:
+        return
+    if incoming.id:
+        for index, existing in enumerate(calls):
+            if existing.id == incoming.id:
+                calls[index] = incoming
+                return
+    calls.append(incoming)
+
+
 def create_agent_loop_graph(
     model_gateway: ModelGateway,
     tool_registry: ToolRegistry,
@@ -166,6 +272,7 @@ def create_agent_loop_graph(
     execution_context: ExecutionContext | None = None,
     cancellation_token: CancellationToken | None = None,
     event_sink: ExecutionEventSink | None = None,
+    approval_registry: Any | None = None,
     llm_timeout_seconds: float | None = None,
     model_provider: str | None = None,
     model_name: str | None = None,
@@ -236,11 +343,13 @@ def create_agent_loop_graph(
 
         # 3. Invoke ModelGateway (cancellable / bounded)
         try:
-            response = await _generate_with_retry(
+            response = await _invoke_model(
                 model_gateway,
                 messages,
                 tool_schemas if tool_schemas else None,
                 cancellation_token,
+                event_sink,
+                str(state.get("run_id") or ""),
                 llm_timeout_seconds,
                 provider=model_provider,
                 model=model_name,
@@ -342,24 +451,28 @@ def create_agent_loop_graph(
                 workspace=ws,
                 cancellation_token=cancellation_token.event if cancellation_token is not None else None,
                 metadata=aux_metadata,
+                approval_registry=approval_registry,
+                event_sink=event_sink,
             )
             if event_sink is not None:
-                event_sink.emit(
+                await publish_execution_event(
+                    event_sink,
                     ExecutionEvent(
                         type=ExecutionEventType.TOOL_STARTED,
                         run_id=run_id,
                         payload={"tool_name": call.name},
-                    )
+                    ),
                 )
             res = await tool_executor.execute(call, context=ctx)
             results.append(res)
             if event_sink is not None:
-                event_sink.emit(
+                await publish_execution_event(
+                    event_sink,
                     ExecutionEvent(
                         type=ExecutionEventType.TOOL_COMPLETED,
                         run_id=run_id,
                         payload={"tool_name": res.name, "status": "error" if res.is_error else "ok"},
-                    )
+                    ),
                 )
 
             # Record execution observation into working memory
@@ -501,6 +614,7 @@ class AgentRuntime:
         max_iterations: int | None = None,
         cancellation_token: CancellationToken | None = None,
         event_sink: ExecutionEventSink | None = None,
+        approval_registry: Any | None = None,
         model_provider: str | None = None,
         model_name: str | None = None,
     ) -> AgentRunState:
@@ -559,6 +673,7 @@ class AgentRuntime:
                 execution_context=execution_context,
                 cancellation_token=cancellation_token,
                 event_sink=event_sink,
+                approval_registry=approval_registry,
                 llm_timeout_seconds=self.llm_timeout_seconds,
                 model_provider=model_provider,
                 model_name=model_name,
@@ -594,7 +709,10 @@ class AgentRuntime:
             self._runs_counter.add(1, {"agent_role": "generalist", "execution_status": "running"})
             try:
                 if event_sink is not None:
-                    event_sink.emit(ExecutionEvent(type=ExecutionEventType.RUN_STARTED, run_id=active_run_id))
+                    await publish_execution_event(
+                        event_sink,
+                        ExecutionEvent(type=ExecutionEventType.RUN_STARTED, run_id=active_run_id),
+                    )
                 raw_result = await graph_to_use.ainvoke(initial_state, config=run_config)
                 state_res = AgentRunState.from_loop_state(raw_result)
                 if cancellation_token is not None and cancellation_token.is_cancelled():
@@ -617,7 +735,7 @@ class AgentRuntime:
                 else:
                     span.set_status(SpanStatus.OK)
 
-                if event_sink is not None:
+                if event_sink is not None and not sink_is_durable(event_sink):
                     terminal = {
                         AgentStatus.CANCELLED: ExecutionEventType.RUN_CANCELLED,
                         AgentStatus.FAILED: ExecutionEventType.RUN_FAILED,
@@ -634,7 +752,7 @@ class AgentRuntime:
             except asyncio.CancelledError:
                 if cancellation_token is not None:
                     cancellation_token.cancel()
-                if event_sink is not None:
+                if event_sink is not None and not sink_is_durable(event_sink):
                     event_sink.emit(ExecutionEvent(type=ExecutionEventType.RUN_CANCELLED, run_id=active_run_id))
                 span.set_attribute(SpanAttributes.EXECUTION_STATUS, AgentStatus.CANCELLED.value)
                 # Re-raise so asyncio.wait_for timeouts and Task.cancel() keep working.

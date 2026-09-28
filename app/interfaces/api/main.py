@@ -7,13 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.infrastructure.config.logger import get_logger, setup_logging
+from app.infrastructure.config.profile import is_standalone
 from app.infrastructure.config.settings import settings
-from app.infrastructure.persistence.postgres.database import close_db, init_db
 from app.interfaces.api.middleware.error_handler import error_handler_middleware
 from app.interfaces.api.middleware.rate_limiter import RateLimitMiddleware
 from app.interfaces.api.middleware.request_limit import RequestSizeLimitMiddleware
 from app.interfaces.api.middleware.security_headers import SecurityHeadersMiddleware
-from app.interfaces.api.routes import agent, auth, chat, files, health, models, oauth, projects
+from app.interfaces.api.routes import agent, auth, chat, files, health, models, oauth, projects, runs
 
 # Setup logging
 setup_logging()
@@ -31,39 +31,61 @@ async def lifespan(app: FastAPI):
     settings.validate_runtime_configuration()
     settings.validate_model_settings()
 
-    try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
-        raise
-
-    try:
-        from app.infrastructure.persistence.redis.client import get_redis_client
-
-        client = await get_redis_client()
-        logger.info("Redis initialized successfully")
-        if settings.uses_redis_coordination:
-            from app.application.runtime.cancellation import get_run_cancellation_registry
-            from app.infrastructure.persistence.redis.cancellation_store import RedisCancellationStore
-
-            registry = get_run_cancellation_registry()
-            registry.attach_store(RedisCancellationStore(client))
-            await registry.start_listener()
-            logger.info("Distributed cancellation listener started")
-        from app.infrastructure.auth.oauth.redis_state_store import RedisOAuthStateStore
+    redis_client = None
+    if is_standalone():
+        from app.infrastructure.auth.oauth.memory_state_store import MemoryOAuthStateStore
         from app.infrastructure.auth.oauth.state import attach_oauth_state_store
+        from app.infrastructure.config.profile import sqlite_database_path
+        from app.infrastructure.persistence.sqlite.database import initialize
 
-        attach_oauth_state_store(RedisOAuthStateStore(client))
-        logger.info("OAuth state store using Redis")
-    except Exception as e:
-        logger.error("Failed to initialize Redis", error=str(e))
-        if settings.uses_redis_coordination:
+        initialize(sqlite_database_path())
+        attach_oauth_state_store(MemoryOAuthStateStore())
+        logger.info("Standalone profile ready", storage="sqlite")
+    else:
+        from app.infrastructure.persistence.postgres.database import init_db
+
+        try:
+            await init_db()
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error("Failed to initialize database", error=str(e))
             raise
+
+        try:
+            from app.infrastructure.persistence.redis.client import get_redis_client
+
+            redis_client = await get_redis_client()
+            logger.info("Redis initialized successfully")
+            if settings.uses_redis_coordination:
+                from app.application.runtime.cancellation import get_run_cancellation_registry
+                from app.infrastructure.persistence.redis.cancellation_store import RedisCancellationStore
+
+                registry = get_run_cancellation_registry()
+                registry.attach_store(RedisCancellationStore(redis_client))
+                await registry.start_listener()
+                logger.info("Distributed cancellation listener started")
+            from app.infrastructure.auth.oauth.redis_state_store import RedisOAuthStateStore
+            from app.infrastructure.auth.oauth.state import attach_oauth_state_store
+
+            attach_oauth_state_store(RedisOAuthStateStore(redis_client))
+            logger.info("OAuth state store using Redis")
+        except Exception as e:
+            logger.error("Failed to initialize Redis", error=str(e))
+            redis_client = None
+            if settings.uses_redis_coordination:
+                raise
+
+    from app.interfaces.api.run_runtime import start_run_worker
+
+    await start_run_worker(redis_client)
 
     yield
 
     logger.info("Shutting down ByteBuddhi API")
+    from app.interfaces.api.run_runtime import stop_run_worker
+
+    with suppress(Exception):
+        await stop_run_worker()
     from app.application.runtime.cancellation import get_run_cancellation_registry
 
     registry = get_run_cancellation_registry()
@@ -73,14 +95,16 @@ async def lifespan(app: FastAPI):
     with suppress(Exception):
         await registry.stop_listener()
 
-    await close_db()
+    if not is_standalone():
+        from app.infrastructure.persistence.postgres.database import close_db
 
-    try:
-        from app.infrastructure.persistence.redis.client import close_redis_client
+        await close_db()
+        try:
+            from app.infrastructure.persistence.redis.client import close_redis_client
 
-        await close_redis_client()
-    except Exception as e:
-        logger.error("Error closing Redis", error=str(e))
+            await close_redis_client()
+        except Exception as e:
+            logger.error("Error closing Redis", error=str(e))
 
     try:
         from app.infrastructure.web.lifecycle import close_web_research_resources
@@ -119,6 +143,7 @@ app.include_router(files.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
+app.include_router(runs.router, prefix="/api/v1")
 
 
 @app.get("/")

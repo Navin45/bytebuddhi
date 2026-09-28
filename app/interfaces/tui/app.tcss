@@ -1,0 +1,46 @@
+Screen {
+    layout: vertical;
+}
+
+#body {
+    height: 1fr;
+}
+
+#sidebar {
+    width: 32;
+    min-width: 20;
+    border-right: solid $primary;
+    padding: 0 1;
+}
+
+#main {
+    width: 1fr;
+}
+
+#transcript {
+    height: 1fr;
+    padding: 0 1;
+}
+
+#status {
+    height: 1;
+    padding: 0 1;
+}
+
+#composer {
+    height: 5;
+    margin: 0 1 1 1;
+}
+
+#help-body, #error-body, #picker-body {
+    width: 70%;
+    height: auto;
+    max-height: 80%;
+    padding: 1 2;
+    border: solid $primary;
+    background: $surface;
+}
+
+MessageView, Markdown, Static {
+    margin-bottom: 1;
+}

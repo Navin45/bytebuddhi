@@ -1,0 +1,93 @@
+name: release-python
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write        # OIDC for trusted publishing
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - run: uv sync --frozen --extra dev
+
+      - name: Verify version
+        run: python scripts/sync_version.py --check-tag "v${{ inputs.version }}"
+
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Typecheck
+        run: uv run mypy app/
+
+      - name: Test
+        run: uv run pytest tests/unit tests/eval -q --tb=line -m "not live_llm"
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Inspect artifacts
+        run: |
+          ls -lh dist/
+          python -m zipfile -l dist/*.whl | head -30
+
+      - name: Generate checksums
+        run: python scripts/generate_checksums.py dist/ --output dist/SHA256SUMS
+
+      - name: Generate SBOM
+        run: python scripts/generate_sbom.py --version "${{ inputs.version }}" --output dist/sbom.cdx.json
+
+      - name: Attest artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/bytebuddhi-*"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+          retention-days: 7
+
+      - name: Verify clean install
+        run: |
+          uv venv /tmp/test-env
+          /tmp/test-env/bin/pip install dist/bytebuddhi-*.whl
+          INSTALLED=$(/tmp/test-env/bin/bytebuddhi --version 2>&1 | awk '{print $NF}')
+          echo "Installed: $INSTALLED"
+          if [ "$INSTALLED" != "${{ inputs.version }}" ]; then
+            echo "FAIL: version mismatch"
+            exit 1
+          fi
+          echo "Clean install verified."
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true

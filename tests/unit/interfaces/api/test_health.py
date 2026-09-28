@@ -16,3 +16,5 @@ async def test_liveness_does_not_probe_database() -> None:
     assert live.json()["status"] == "ok"
     assert compat.status_code == 200
     assert "version" in live.json()
+    assert live.json()["protocol_version"] == 1
+    assert live.json()["min_protocol_version"] == 1

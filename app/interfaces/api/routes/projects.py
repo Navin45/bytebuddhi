@@ -10,11 +10,13 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.application.ports.output.repository.file_repository import FileRepository
 from app.application.ports.output.repository.project_repository import ProjectRepository
 from app.application.ports.output.storage.file_storage_service import FileStorageService
+from app.application.use_cases.project.resolve_project_by_local_path import ResolveProjectByLocalPathUseCase
+from app.domain.exceptions.workspace_exceptions import WorkspaceBoundaryError
 from app.domain.models.file import File
 from app.domain.models.project import Project
 from app.domain.models.user import User
@@ -31,6 +33,8 @@ from app.interfaces.api.schemas.project_schema import (
     ProjectCreateRequest,
     ProjectResponse,
     ProjectUpdateRequest,
+    ResolveLocalProjectRequest,
+    ResolveLocalProjectResponse,
 )
 
 logger = get_logger(__name__)
@@ -110,6 +114,42 @@ async def list_projects(
     """
     projects = await project_repo.get_by_user_id(current_user.id)
     return [ProjectResponse.model_validate(p) for p in projects]
+
+
+def get_resolve_project_by_local_path(
+    project_repo: ProjectRepository = Depends(get_project_repository),
+) -> ResolveProjectByLocalPathUseCase:
+    """Local-gateway path selection. The use case remains the authority."""
+    return ResolveProjectByLocalPathUseCase(project_repo, workspace_mode=settings.workspace_mode)
+
+
+@router.post("/resolve-path", response_model=ResolveLocalProjectResponse)
+async def resolve_project_path(
+    request: ResolveLocalProjectRequest,
+    http_request: Request,
+    current_user: User = Depends(get_current_user),
+    use_case: ResolveProjectByLocalPathUseCase = Depends(get_resolve_project_by_local_path),
+) -> ResolveLocalProjectResponse:
+    """Resolve a path on this gateway host to an owned project.
+
+    Callers must only send a path when they are talking to the local gateway.
+    The path is interpreted on the gateway machine, never as a remote client's disk.
+    """
+    client = http_request.client
+    host = client.host if client is not None else ""
+    if host not in {"127.0.0.1", "::1", "localhost"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Project path resolution is only available to the local gateway",
+        )
+    try:
+        project_id = await use_case.execute(current_user.id, request.local_path)
+    except WorkspaceBoundaryError as exc:
+        message = str(exc)
+        if "only allowed when WORKSPACE_MODE=local" in message:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
+    return ResolveLocalProjectResponse(project_id=project_id)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

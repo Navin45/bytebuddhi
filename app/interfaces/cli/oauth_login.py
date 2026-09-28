@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import webbrowser
 from contextlib import suppress
 from typing import TextIO
@@ -16,14 +15,16 @@ from app.interfaces.cli.errors import CliError
 from app.interfaces.cli.exit_codes import ExitCode
 from app.interfaces.cli.render import write_json
 
-_API_ENV = "BYTEBUDDHI_API_URL"
-
 
 def resolve_api_url(cli_api_url: str | None) -> str:
-    raw = (cli_api_url or os.environ.get(_API_ENV) or "http://127.0.0.1:8000").strip().rstrip("/")
-    if not raw.startswith("http://") and not raw.startswith("https://"):
-        raise CliError("API URL must be an http(s) URL", ExitCode.USAGE_ERROR)
-    return raw
+    from app.interfaces.gateway.config import resolve_gateway_endpoint
+    from app.interfaces.gateway.errors import GatewayConfigError
+
+    try:
+        return resolve_gateway_endpoint(cli_api_url).url
+    except GatewayConfigError as exc:
+        code = ExitCode.USAGE_ERROR if exc.usage else ExitCode.CONFIG_FAILURE
+        raise CliError(exc.message, code) from exc
 
 
 def parse_login_provider(raw: str | None) -> IdentityProvider:

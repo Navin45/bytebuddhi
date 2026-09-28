@@ -11,7 +11,12 @@ from app.application.ports.output.logger import get_logger
 from app.application.ports.output.repository.conversation_repository import ConversationRepository
 from app.application.ports.output.repository.message_repository import MessageRepository
 from app.application.runtime.cancellation import CancellationToken
-from app.application.runtime.events import ExecutionEventSink
+from app.application.runtime.events import (
+    ExecutionEvent,
+    ExecutionEventSink,
+    ExecutionEventType,
+    publish_execution_event,
+)
 from app.application.workspace.resolution_service import WorkspaceResolutionService
 from app.domain.models.conversation import Conversation
 from app.domain.models.execution_context import ExecutionContext
@@ -36,6 +41,7 @@ class ExecuteTaskCommand:
     history_limit: int = 10
     cancellation_token: CancellationToken | None = None
     event_sink: ExecutionEventSink | None = None
+    approval_registry: Any | None = None
     model_provider: str | None = None
     model_name: str | None = None
 
@@ -49,6 +55,7 @@ class ExecuteTaskResult:
     run_state: AgentRunState
     conversation_id: UUID | str
     workspace_id: str
+    assistant_message_id: UUID | None = None
 
 
 class ExecuteTaskUseCase:
@@ -150,11 +157,13 @@ class ExecuteTaskUseCase:
             config={"configurable": {"thread_id": thread_id}},
             cancellation_token=command.cancellation_token,
             event_sink=command.event_sink,
+            approval_registry=command.approval_registry,
             model_provider=selected_provider,
             model_name=selected_model,
         )
 
         response_text = run_state.final_response or ""
+        assistant_message_id: UUID | None = None
 
         if command.persist_messages and self.message_repo and conv_id is not None:
             conv_uuid = UUID(str(conv_id)) if isinstance(conv_id, str) else conv_id
@@ -163,7 +172,19 @@ class ExecuteTaskUseCase:
                 role=MessageRole.ASSISTANT,
                 content=response_text,
             )
-            await self.message_repo.create(ai_msg)
+            created = await self.message_repo.create(ai_msg)
+            assistant_message_id = created.id
+            await publish_execution_event(
+                command.event_sink,
+                ExecutionEvent(
+                    type=ExecutionEventType.MESSAGE_CREATED,
+                    run_id=run_id,
+                    payload={
+                        "message_id": str(assistant_message_id),
+                        "conversation_id": str(conv_uuid),
+                    },
+                ),
+            )
 
         return ExecuteTaskResult(
             run_id=run_id,
@@ -171,4 +192,5 @@ class ExecuteTaskUseCase:
             run_state=run_state,
             conversation_id=conv_id or run_id,
             workspace_id=workspace.workspace_id,
+            assistant_message_id=assistant_message_id,
         )

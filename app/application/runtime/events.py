@@ -27,19 +27,44 @@ class ExecutionEventType(StrEnum):
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
     RUN_CANCELLED = "run_cancelled"
+    RUN_INTERRUPTED = "run_interrupted"
     RUN_TIMED_OUT = "run_timed_out"
+    RUN_QUEUED = "run_queued"
+    RUN_CANCEL_REQUESTED = "run_cancel_requested"
+    ASSISTANT_DELTA = "assistant_delta"
+    MESSAGE_CREATED = "message_created"
+    TOOL_APPROVAL_REQUIRED = "tool_approval_required"
+    TOOL_APPROVED = "tool_approved"
+    TOOL_REJECTED = "tool_rejected"
 
 
 _ALLOWED_PAYLOAD_KEYS = frozenset(
     {
         "run_id",
         "tool_name",
+        "action",
+        "risk_level",
+        "reason",
+        "decision",
+        "approved",
         "status",
         "child_run_id",
         "artifact_id",
         "iteration",
+        "delta",
+        "message_id",
+        "conversation_id",
+        "assistant_message_id",
+        "error_code",
+        "error_message",
+        "duration_ms",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "execution_attempt",
     }
 )
+ALLOWED_EXECUTION_PAYLOAD_KEYS = _ALLOWED_PAYLOAD_KEYS
 
 
 @dataclass(frozen=True)
@@ -62,6 +87,21 @@ class ExecutionEventSink(Protocol):
     def emit(self, event: ExecutionEvent) -> None: ...
 
     def close(self) -> None: ...
+
+
+async def publish_execution_event(sink: ExecutionEventSink | None, event: ExecutionEvent) -> None:
+    """Deliver one runtime event. Durable sinks persist before this returns."""
+    if sink is None:
+        return
+    aemit = getattr(sink, "aemit", None)
+    if aemit is not None:
+        await aemit(event)
+        return
+    sink.emit(event)
+
+
+def sink_is_durable(sink: ExecutionEventSink | None) -> bool:
+    return sink is not None and getattr(sink, "aemit", None) is not None
 
 
 class BoundedExecutionEventBus:

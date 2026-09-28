@@ -7,8 +7,6 @@ must not duplicate this graph.
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.application.agent.runtime import AgentRuntime
 from app.application.ports.output.repository.user_repository import UserRepository
 from app.application.use_cases.agent.execute_task import ExecuteTaskUseCase
@@ -18,7 +16,7 @@ from app.application.use_cases.project.resolve_project_by_local_path import Reso
 
 
 def assemble_agent_runtime(
-    db: AsyncSession,
+    db: Any,
     *,
     model_gateway: Any,
     workspace: Any,
@@ -44,9 +42,20 @@ def assemble_agent_runtime(
     from app.application.tools.builtin.web_research import create_web_research_tool
     from app.application.tools.executor import ToolExecutor
     from app.application.tools.registry import ToolRegistry
+    from app.infrastructure.config.profile import is_standalone
     from app.infrastructure.config.settings import settings as app_settings
-    from app.infrastructure.persistence.postgres.checkpoint_saver import PostgresCheckpointSaver
     from app.infrastructure.web.lifecycle import get_web_research_resources
+
+    checkpointer: Any
+    if is_standalone():
+        from app.infrastructure.config.profile import sqlite_database_path
+        from app.infrastructure.persistence.sqlite.checkpoint import SqliteCheckpointSaver
+
+        checkpointer = SqliteCheckpointSaver(sqlite_database_path())
+    else:
+        from app.infrastructure.persistence.postgres.checkpoint_saver import PostgresCheckpointSaver
+
+        checkpointer = PostgresCheckpointSaver(db)
 
     registry = ToolRegistry()
     register_echo_tool(registry)
@@ -84,7 +93,6 @@ def assemble_agent_runtime(
         meter=meter,
     )
     context_engine = ContextEngine()
-    checkpointer = PostgresCheckpointSaver(db)
 
     runtime = AgentRuntime(
         model_gateway=model_gateway,
@@ -135,15 +143,30 @@ class ApplicationGraph:
             await self.mcp_manager.close_all()
 
 
-def compose_identity_services(db: AsyncSession) -> ApplicationGraph:
+def compose_identity_services(db: Any) -> ApplicationGraph:
     """Project/user services without constructing AgentRuntime."""
+    from app.infrastructure.config.profile import is_standalone
     from app.infrastructure.config.settings import settings as app_settings
-    from app.infrastructure.persistence.postgres.repositories import (
-        ProjectRepositoryImpl,
-        UserRepositoryImpl,
-    )
 
-    project_repo = ProjectRepositoryImpl(db)
+    project_repo: Any
+    user_repo: Any
+    if is_standalone():
+        from app.infrastructure.persistence.sqlite.repositories import (
+            SqliteProjectRepository,
+            SqliteUserRepository,
+        )
+
+        project_repo = SqliteProjectRepository(db)
+        user_repo = SqliteUserRepository(db)
+    else:
+        from app.infrastructure.persistence.postgres.repositories import (
+            ProjectRepositoryImpl,
+            UserRepositoryImpl,
+        )
+
+        project_repo = ProjectRepositoryImpl(db)
+        user_repo = UserRepositoryImpl(db)
+
     from app.infrastructure.llm.provider_factory import build_model_catalog
 
     return ApplicationGraph(
@@ -153,12 +176,12 @@ def compose_identity_services(db: AsyncSession) -> ApplicationGraph:
             project_repo,
             workspace_mode=app_settings.workspace_mode,
         ),
-        user_repository=UserRepositoryImpl(db),
+        user_repository=user_repo,
         model_catalog=build_model_catalog(app_settings),
     )
 
 
-def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
+def compose_application_graph(db: Any) -> ApplicationGraph:
     """Build ExecuteTaskUseCase and supporting services using the shared runtime graph."""
     from app.application.code.in_memory_index import InMemoryCodeIndex
     from app.application.code.intelligence_service import CodeIntelligenceService
@@ -168,6 +191,7 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
     from app.application.policy.tool_policy import ToolPolicyEngine
     from app.application.workspace.resolution_service import WorkspaceResolutionService
     from app.domain.models.workspace import Workspace
+    from app.infrastructure.config.profile import artifact_directory, is_standalone, sqlite_database_path
     from app.infrastructure.config.settings import settings as app_settings
     from app.infrastructure.connectors.credentials.env_credential_provider import EnvAndDictCredentialProvider
     from app.infrastructure.connectors.github.github_connector import GitHubConnector
@@ -181,20 +205,54 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
     from app.infrastructure.mcp.client_manager import MCPCapabilityManager
     from app.infrastructure.observability import get_meter, get_tracer
     from app.infrastructure.parser.tree_sitter_parser import TreeSitterCodeParser
-    from app.infrastructure.persistence.postgres.repositories import (
-        ConversationRepositoryImpl,
-        MessageRepositoryImpl,
-        ProjectRepositoryImpl,
-        UserRepositoryImpl,
-    )
-    from app.infrastructure.persistence.postgres.repositories.postgres_memory_store import PostgresMemoryStore
     from app.infrastructure.persistence.sqlite.sqlite_memory_store import SqliteMemoryStore
     from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
 
+    conversation_repository: Any
+    message_repository: Any
+    project_repository: Any
+    user_repository: Any
+    durable_store: Any
+    if is_standalone():
+        from app.infrastructure.persistence.sqlite.repositories import (
+            SqliteConversationRepository,
+            SqliteMessageRepository,
+            SqliteProjectRepository,
+            SqliteUserRepository,
+        )
+
+        conversation_repository = SqliteConversationRepository
+        message_repository = SqliteMessageRepository
+        project_repository = SqliteProjectRepository
+        user_repository = SqliteUserRepository
+        durable_store = SqliteMemoryStore(db_path=sqlite_database_path())
+        memory_path = str(sqlite_database_path())
+    else:
+        from app.infrastructure.persistence.postgres.repositories import (
+            ConversationRepositoryImpl,
+            MessageRepositoryImpl,
+            ProjectRepositoryImpl,
+            UserRepositoryImpl,
+        )
+        from app.infrastructure.persistence.postgres.repositories.postgres_memory_store import PostgresMemoryStore
+
+        conversation_repository = ConversationRepositoryImpl
+        message_repository = MessageRepositoryImpl
+        project_repository = ProjectRepositoryImpl
+        user_repository = UserRepositoryImpl
+        durable_store = PostgresMemoryStore(db)
+        memory_path = "./storage/operational_memory.db"
+
     tracer = get_tracer()
     meter = get_meter()
-    workspace = Workspace.create(root_path="storage/workspaces/default", workspace_id="default_workspace")
-    artifact_store = LocalArtifactStore(base_dir="./storage/artifacts", tracer=tracer)
+    if is_standalone():
+        from app.interfaces.gateway.config import config_dir
+
+        workspace_root = str(config_dir() / "workspaces" / "default")
+    else:
+        workspace_root = "storage/workspaces/default"
+    workspace = Workspace.create(root_path=workspace_root, workspace_id="default_workspace")
+    artifact_store = LocalArtifactStore(base_dir=str(artifact_directory()), tracer=tracer)
     process_manager = LocalProcessManager(tracer=tracer, meter=meter)
     command_policy = CommandPolicy()
     tool_policy_engine = ToolPolicyEngine(command_policy=command_policy, tracer=tracer, meter=meter)
@@ -212,8 +270,8 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
     mcp_manager = MCPCapabilityManager(tracer=tracer, meter=meter)
     code_intelligence = CodeIntelligenceService(parser=TreeSitterCodeParser(), index=InMemoryCodeIndex())
     memory_orchestrator = MemoryOrchestrator(
-        working_store=SqliteMemoryStore(db_path="./storage/operational_memory.db"),
-        durable_store=PostgresMemoryStore(db),
+        working_store=SqliteMemoryStore(db_path=memory_path),
+        durable_store=durable_store,
         artifact_store=artifact_store,
         embedding_provider=create_embedding_provider(),
         tracer=tracer,
@@ -234,7 +292,7 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
         tracer=tracer,
         meter=meter,
     )
-    project_repo = ProjectRepositoryImpl(db)
+    project_repo = project_repository(db)
     workspace_resolution = WorkspaceResolutionService(
         project_repo=project_repo,
         base_storage_dir=app_settings.workspace_root,
@@ -244,8 +302,8 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
     execute_task = ExecuteTaskUseCase(
         workspace_resolution_service=workspace_resolution,
         agent_runtime=runtime,
-        conversation_repo=ConversationRepositoryImpl(db),
-        message_repo=MessageRepositoryImpl(db),
+        conversation_repo=conversation_repository(db),
+        message_repo=message_repository(db),
         model_catalog=catalog,
     )
     return ApplicationGraph(
@@ -256,7 +314,7 @@ def compose_application_graph(db: AsyncSession) -> ApplicationGraph:
             project_repo,
             workspace_mode=app_settings.workspace_mode,
         ),
-        user_repository=UserRepositoryImpl(db),
+        user_repository=user_repository(db),
         http_client=http_client,
         mcp_manager=mcp_manager,
         model_catalog=catalog,

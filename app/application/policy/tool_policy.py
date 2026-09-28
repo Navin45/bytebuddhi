@@ -87,6 +87,36 @@ class ToolPolicyEngine:
                         if tool_call.name in actions or (tool_def.id and tool_def.id in actions):
                             approved = True
 
+                    if not approved and context is not None:
+                        reg = getattr(context, "approval_registry", None)
+                        if reg is not None and context.run_id:
+                            if await reg.is_action_approved(context.run_id, tool_call.name):
+                                approved = True
+                            else:
+                                from uuid import UUID
+
+                                try:
+                                    user_uuid = UUID(context.user_id) if context.user_id else UUID(int=0)
+                                except (ValueError, TypeError):
+                                    user_uuid = UUID(int=0)
+                                risk_val = (
+                                    tool_def.risk_level.value
+                                    if hasattr(tool_def.risk_level, "value")
+                                    else str(tool_def.risk_level)
+                                )
+                                sink = getattr(context, "event_sink", None)
+                                approved = await reg.request_approval(
+                                    run_id=context.run_id,
+                                    user_id=user_uuid,
+                                    action=tool_call.name,
+                                    risk_level=risk_val,
+                                    reason=(
+                                        f"Action '{tool_call.name}' requires explicit approval before execution "
+                                        f"(risk tier: {risk_val})"
+                                    ),
+                                    sink=sink,
+                                )
+
                     if not approved:
                         risk_val = (
                             tool_def.risk_level.value

@@ -2,13 +2,15 @@
   "name": "bytebuddhi",
   "displayName": "ByteBuddhi",
   "description": "Thin VS Code client for the ByteBuddhi agent platform. Execution stays on the ByteBuddhi API.",
-  "version": "0.1.3",
+  "version": "0.1.4-rc.1",
   "publisher": "bytebuddhi",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
     "onView:bytebuddhi.chat",
     "onUri"

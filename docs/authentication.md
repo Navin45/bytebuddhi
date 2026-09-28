@@ -79,11 +79,11 @@ The last remaining sign-in method cannot be removed. Set a password or link anot
 |---|---|---|
 | API / browser | Password or OAuth → ByteBuddhi JWT | Caller-controlled; not in URL query strings |
 | VS Code | Password command, or Continue with Google/GitHub → backend browser flow → one-time code on `vscode://bytebuddhi.bytebuddhi/oauth` → `POST /auth/oauth/exchange` | VS Code SecretStorage |
-| CLI | `bytebuddhi login --provider google\|github` opens the backend login URL; paste the one-time code (`--code`) | `~/.bytebuddhi/credentials.json` (mode 0600) |
+| CLI | `bytebuddhi login` stores a ByteBuddhi access token. Gateway commands send `Authorization: Bearer`. The API `get_current_user()` check is authoritative. | `~/.bytebuddhi/credentials.json` (mode 0600). OS keyring storage is a later follow-up. |
 
 The VS Code extension and CLI **must not** contain `GOOGLE_CLIENT_SECRET` or `GITHUB_CLIENT_SECRET`. They never call Google or GitHub token endpoints.
 
-CLI `run` / `chat` still execute locally through `ExecuteTaskUseCase` using `User.id` from `--user-id`, `BYTEBUDDHI_USER_ID`, or the stored login. They do not send Google tokens to the runtime.
+CLI `run` / `chat` use the gateway by default. They send the stored access token and do not send Google or GitHub tokens, a user id, or `JWT_SECRET_KEY`. `--embedded` still executes in-process with `User.id` from `--user-id`, `BYTEBUDDHI_USER_ID`, or the stored login. A gateway failure does not select embedded mode.
 
 `bytebuddhi logout` deletes the local credential file. VS Code Sign Out deletes SecretStorage keys.
 

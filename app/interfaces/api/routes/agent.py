@@ -1,7 +1,7 @@
 """Agent feedback API route.
 
 This module provides an endpoint for users to submit feedback
-on agent responses, which is logged to LangSmith for quality tracking.
+on agent responses. Feedback is recorded in the application log.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.application.runtime.cancellation import get_run_cancellation_registry
 from app.domain.models.user import User
 from app.infrastructure.config.logger import get_logger
-from app.infrastructure.monitoring import is_langsmith_enabled, log_agent_feedback
 from app.interfaces.api.middleware import get_current_user
 from app.interfaces.api.schemas.agent_schema import (
     AgentFeedbackRequest,
@@ -25,31 +24,15 @@ router = APIRouter(prefix="/agent", tags=["Agent"])
 async def submit_feedback(request: AgentFeedbackRequest):
     """Submit feedback for an agent response.
 
-    This endpoint allows users to provide feedback on agent responses,
-    which is logged to LangSmith for quality tracking and improvement.
+    This endpoint allows users to provide feedback on agent responses.
 
     Args:
         request: Feedback data including run_id and score
 
     Returns:
         AgentFeedbackResponse: Feedback submission status
-
-    Raises:
-        HTTPException: If LangSmith is not configured
     """
-    if not is_langsmith_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="LangSmith integration not configured",
-        )
-
     try:
-        log_agent_feedback(
-            run_id=request.run_id,
-            score=request.score,
-            comment=request.comment,
-        )
-
         logger.info(
             "Agent feedback submitted",
             run_id=request.run_id,

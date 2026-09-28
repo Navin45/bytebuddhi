@@ -10,6 +10,7 @@ Architecture:
 - Interfaces: API and user-facing adapters
 """
 
-__version__ = "0.1.3"
+from app._version import APP_VERSION as __version__
+from app._version import MIN_PROTOCOL_VERSION, PROTOCOL_VERSION
 
-__all__ = ["__version__"]
+__all__ = ["__version__", "PROTOCOL_VERSION", "MIN_PROTOCOL_VERSION"]

@@ -69,3 +69,13 @@ class ProjectIndexResponse(BaseModel):
     files_indexed: int = Field(default=0, description="Number of files indexed")
     chunks_created: int = Field(default=0, description="Number of code chunks created")
     embeddings_generated: int = Field(default=0, description="Number of embeddings generated")
+
+
+class ResolveLocalProjectRequest(BaseModel):
+    """Path on the gateway host. Not a client filesystem handle."""
+
+    local_path: str = Field(..., min_length=1, max_length=1024)
+
+
+class ResolveLocalProjectResponse(BaseModel):
+    project_id: UUID

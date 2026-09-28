@@ -14,12 +14,12 @@ class AgentFeedbackRequest(BaseModel):
     responses, such as thumbs up/down or detailed ratings.
 
     Attributes:
-        run_id: LangSmith run identifier
+        run_id: Agent run identifier
         score: Feedback score (0.0 to 1.0, where 1.0 is best)
         comment: Optional feedback comment
     """
 
-    run_id: str = Field(..., description="LangSmith run identifier")
+    run_id: str = Field(..., description="Agent run identifier")
     score: float = Field(..., ge=0.0, le=1.0, description="Feedback score (0.0 to 1.0)")
     comment: str | None = Field(None, description="Optional feedback comment")
 

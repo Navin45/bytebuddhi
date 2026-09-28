@@ -6,11 +6,10 @@ import json
 import re
 import sys
 from collections.abc import Sequence
-from typing import Any, TextIO
+from typing import Any, Protocol, TextIO
 from uuid import UUID
 
 from app.application.agent.types import AgentStatus
-from app.application.dto.project_dto import ProjectResponseDTO
 from app.application.use_cases.agent.execute_task import ExecuteTaskResult
 
 _ARTIFACT_RE = re.compile(r"artifact[_:][\w.-]+", re.IGNORECASE)
@@ -25,17 +24,37 @@ def envelope_from_result(result: ExecuteTaskResult) -> dict[str, Any]:
     errors: list[str] = []
     if result.run_state.error is not None:
         errors.append(result.run_state.error.message)
-    artifacts = _artifact_refs(result.response)
-    tool_names = sorted({tc.name for tc in result.run_state.tool_calls})
+    status = "success" if result.run_state.status == AgentStatus.COMPLETED else _status_name(result)
+    return envelope_from_run_view(
+        status=status,
+        run_id=result.run_id,
+        conversation_id=str(result.conversation_id),
+        workspace_id=result.workspace_id,
+        answer=result.response,
+        tools=[tc.name for tc in result.run_state.tool_calls],
+        errors=errors,
+    )
+
+
+def envelope_from_run_view(
+    *,
+    status: str,
+    run_id: str,
+    conversation_id: str,
+    workspace_id: str,
+    answer: str,
+    tools: Sequence[str],
+    errors: Sequence[str],
+) -> dict[str, Any]:
     return {
-        "status": "success" if result.run_state.status == AgentStatus.COMPLETED else _status_name(result),
-        "run_id": result.run_id,
-        "conversation_id": str(result.conversation_id),
-        "workspace_id": result.workspace_id,
-        "answer": result.response,
-        "artifacts": artifacts,
-        "tools": tool_names,
-        "errors": errors,
+        "status": status,
+        "run_id": run_id,
+        "conversation_id": conversation_id,
+        "workspace_id": workspace_id,
+        "answer": answer,
+        "artifacts": _artifact_refs(answer),
+        "tools": sorted(set(tools)),
+        "errors": list(errors),
     }
 
 
@@ -52,28 +71,50 @@ def write_json(payload: dict[str, Any], *, stream: TextIO = sys.stdout) -> None:
 
 
 def write_human_result(result: ExecuteTaskResult, *, stream: TextIO = sys.stdout) -> None:
+    write_human_run_view(
+        run_id=result.run_id,
+        conversation_id=str(result.conversation_id),
+        workspace_id=result.workspace_id,
+        status=_status_name(result),
+        answer=result.response,
+        tools=[tc.name for tc in result.run_state.tool_calls],
+        web_lines=_web_research_previews(result),
+        stream=stream,
+    )
+
+
+def write_human_run_view(
+    *,
+    run_id: str,
+    conversation_id: str,
+    workspace_id: str,
+    status: str,
+    answer: str,
+    tools: Sequence[str],
+    web_lines: Sequence[str] = (),
+    stream: TextIO = sys.stdout,
+) -> None:
     lines = [
-        f"Run: {result.run_id}",
-        f"Conversation: {result.conversation_id}",
-        f"Workspace: {result.workspace_id}",
-        f"Status: {_status_name(result)}",
+        f"Run: {run_id}",
+        f"Conversation: {conversation_id}",
+        f"Workspace: {workspace_id}",
+        f"Status: {status}",
         "",
         "Answer:",
-        result.response or "(empty)",
+        answer or "(empty)",
     ]
-    artifacts = _artifact_refs(result.response)
+    artifacts = _artifact_refs(answer)
     if artifacts:
         lines.extend(["", "Artifacts:"])
         lines.extend(f"  - {item}" for item in artifacts)
         lines.append("Output may be truncated. Artifact bodies are not printed.")
-    tools = sorted({tc.name for tc in result.run_state.tool_calls})
-    if tools:
+    tool_names = sorted(set(tools))
+    if tool_names:
         lines.extend(["", "Tools:"])
-        lines.extend(f"  - {name}" for name in tools)
-    web_previews = _web_research_previews(result)
-    if web_previews:
+        lines.extend(f"  - {name}" for name in tool_names)
+    if web_lines:
         lines.extend(["", "Web research:"])
-        lines.extend(web_previews)
+        lines.extend(web_lines)
     stream.write("\n".join(lines) + "\n")
 
 
@@ -92,7 +133,15 @@ def _web_research_previews(result: ExecuteTaskResult) -> list[str]:
     return previews
 
 
-def write_human_projects(projects: Sequence[ProjectResponseDTO], *, stream: TextIO = sys.stdout) -> None:
+class _ProjectView(Protocol):
+    id: UUID
+    user_id: UUID
+    name: str
+    local_path: str | None
+    is_active: bool
+
+
+def write_human_projects(projects: Sequence[_ProjectView], *, stream: TextIO = sys.stdout) -> None:
     if not projects:
         stream.write("No projects.\n")
         return
@@ -100,7 +149,7 @@ def write_human_projects(projects: Sequence[ProjectResponseDTO], *, stream: Text
         stream.write(f"{project.id}  {project.name}  {project.local_path or '-'}\n")
 
 
-def write_human_project(project: ProjectResponseDTO, *, stream: TextIO = sys.stdout) -> None:
+def write_human_project(project: _ProjectView, *, stream: TextIO = sys.stdout) -> None:
     stream.write(
         "\n".join(
             [
@@ -137,7 +186,7 @@ def json_error_payload(message: str, *, exit_code: int) -> dict[str, Any]:
     }
 
 
-def json_projects_payload(projects: Sequence[ProjectResponseDTO]) -> dict[str, Any]:
+def json_projects_payload(projects: Sequence[_ProjectView]) -> dict[str, Any]:
     return {
         "status": "success",
         "projects": [
@@ -153,7 +202,7 @@ def json_projects_payload(projects: Sequence[ProjectResponseDTO]) -> dict[str, A
     }
 
 
-def json_project_payload(project: ProjectResponseDTO) -> dict[str, Any]:
+def json_project_payload(project: _ProjectView) -> dict[str, Any]:
     return {
         "status": "success",
         "project": {

@@ -29,7 +29,7 @@ module; ExecuteTaskUseCase builds ExecutionContext after authorization.
 """
 
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,20 +63,52 @@ from app.application.ports.output.storage.file_storage_service import (
     FileStorageService,
 )
 from app.infrastructure.llm.provider_factory import create_llm_provider
-from app.infrastructure.persistence.postgres.database import get_db
-from app.infrastructure.persistence.postgres.repositories import (
-    CodeChunkRepositoryImpl,
-    ConversationRepositoryImpl,
-    EmbeddingRepositoryImpl,
-    ExternalIdentityRepositoryImpl,
-    FileRepositoryImpl,
-    MessageRepositoryImpl,
-    ProjectRepositoryImpl,
-    UserRepositoryImpl,
-)
 from app.infrastructure.persistence.redis.cache_service_impl import RedisCacheService
 from app.infrastructure.persistence.redis.client import get_redis_client
+from app.infrastructure.persistence.sessions import get_db
 from app.infrastructure.storage import LocalFileStorageService
+
+
+def _repository(kind: str, db: Any) -> Any:
+    """Select the repository implementation for the active profile."""
+    from app.infrastructure.config.profile import is_standalone
+
+    if is_standalone():
+        from app.infrastructure.persistence.sqlite import repositories as sqlite_repos
+
+        mapping: dict[str, Any] = {
+            "user": sqlite_repos.SqliteUserRepository,
+            "external_identity": sqlite_repos.SqliteExternalIdentityRepository,
+            "project": sqlite_repos.SqliteProjectRepository,
+            "conversation": sqlite_repos.SqliteConversationRepository,
+            "message": sqlite_repos.SqliteMessageRepository,
+            "file": sqlite_repos.SqliteFileRepository,
+            "code_chunk": sqlite_repos.SqliteCodeChunkRepository,
+            "embedding": sqlite_repos.SqliteEmbeddingRepository,
+        }
+        return mapping[kind](db)
+    from app.infrastructure.persistence.postgres.repositories import (
+        CodeChunkRepositoryImpl,
+        ConversationRepositoryImpl,
+        EmbeddingRepositoryImpl,
+        ExternalIdentityRepositoryImpl,
+        FileRepositoryImpl,
+        MessageRepositoryImpl,
+        ProjectRepositoryImpl,
+        UserRepositoryImpl,
+    )
+
+    mapping = {
+        "user": UserRepositoryImpl,
+        "external_identity": ExternalIdentityRepositoryImpl,
+        "project": ProjectRepositoryImpl,
+        "conversation": ConversationRepositoryImpl,
+        "message": MessageRepositoryImpl,
+        "file": FileRepositoryImpl,
+        "code_chunk": CodeChunkRepositoryImpl,
+        "embedding": EmbeddingRepositoryImpl,
+    }
+    return mapping[kind](db)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
@@ -106,13 +138,13 @@ async def get_user_repository(
     Returns:
         UserRepository: User repository instance
     """
-    return UserRepositoryImpl(db)
+    return cast(UserRepository, _repository("user", db))
 
 
 async def get_external_identity_repository(
     db: AsyncSession = Depends(get_db),
 ) -> ExternalIdentityRepository:
-    return ExternalIdentityRepositoryImpl(db)
+    return cast(ExternalIdentityRepository, _repository("external_identity", db))
 
 
 async def get_project_repository(
@@ -129,7 +161,7 @@ async def get_project_repository(
     Returns:
         ProjectRepository: Project repository instance
     """
-    return ProjectRepositoryImpl(db)
+    return cast(ProjectRepository, _repository("project", db))
 
 
 async def get_conversation_repository(
@@ -146,7 +178,7 @@ async def get_conversation_repository(
     Returns:
         ConversationRepository: Conversation repository instance
     """
-    return ConversationRepositoryImpl(db)
+    return cast(ConversationRepository, _repository("conversation", db))
 
 
 async def get_message_repository(
@@ -163,7 +195,7 @@ async def get_message_repository(
     Returns:
         MessageRepository: Message repository instance
     """
-    return MessageRepositoryImpl(db)
+    return cast(MessageRepository, _repository("message", db))
 
 
 async def get_file_repository(
@@ -180,7 +212,7 @@ async def get_file_repository(
     Returns:
         FileRepository: File repository instance
     """
-    return FileRepositoryImpl(db)
+    return cast(FileRepository, _repository("file", db))
 
 
 async def get_code_chunk_repository(
@@ -197,7 +229,7 @@ async def get_code_chunk_repository(
     Returns:
         CodeChunkRepository: Code chunk repository instance
     """
-    return CodeChunkRepositoryImpl(db)
+    return cast(CodeChunkRepository, _repository("code_chunk", db))
 
 
 async def get_embedding_repository(
@@ -214,7 +246,7 @@ async def get_embedding_repository(
     Returns:
         EmbeddingRepository: Embedding repository instance
     """
-    return EmbeddingRepositoryImpl(db)
+    return cast(EmbeddingRepository, _repository("embedding", db))
 
 
 def get_file_storage_service() -> FileStorageService:
@@ -317,9 +349,10 @@ def get_artifact_store(
     tracer: Any = Depends(get_telemetry_tracer),
 ) -> Any:
     """Get ArtifactStore for archiving large process outputs."""
+    from app.infrastructure.config.profile import artifact_directory
     from app.infrastructure.storage.local_artifact_store import LocalArtifactStore
 
-    return LocalArtifactStore(base_dir="./storage/artifacts", tracer=tracer)
+    return LocalArtifactStore(base_dir=str(artifact_directory()), tracer=tracer)
 
 
 def get_process_manager(
@@ -399,15 +432,23 @@ def get_context_engine() -> Any:
 
 def get_sqlite_memory_store() -> Any:
     """Get SqliteMemoryStore for local operational memory."""
+    from app.infrastructure.config.profile import is_standalone, sqlite_database_path
     from app.infrastructure.persistence.sqlite.sqlite_memory_store import SqliteMemoryStore
 
-    return SqliteMemoryStore(db_path="./storage/operational_memory.db")
+    path = sqlite_database_path() if is_standalone() else "./storage/operational_memory.db"
+    return SqliteMemoryStore(db_path=path)
 
 
 def get_postgres_memory_store(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
-    """Get PostgresMemoryStore for durable memory."""
+    """Durable memory for the active profile. Standalone does not open PostgreSQL."""
+    from app.infrastructure.config.profile import is_standalone, sqlite_database_path
+
+    if is_standalone():
+        from app.infrastructure.persistence.sqlite.sqlite_memory_store import SqliteMemoryStore
+
+        return SqliteMemoryStore(db_path=sqlite_database_path())
     from app.infrastructure.persistence.postgres.repositories.postgres_memory_store import PostgresMemoryStore
 
     return PostgresMemoryStore(db)

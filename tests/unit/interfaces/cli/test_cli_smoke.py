@@ -5,7 +5,14 @@ import sys
 
 
 def test_bytebuddhi_help_version_and_run_help() -> None:
-    for args in (["--help"], ["--version"], ["run", "--help"]):
+    for args in (
+        ["--help"],
+        ["--version"],
+        ["run", "--help"],
+        ["serve", "--help"],
+        ["gateway", "--help"],
+        ["gateway", "start", "--help"],
+    ):
         completed = subprocess.run(
             [sys.executable, "-m", "app.interfaces.cli.main", *args],
             check=False,

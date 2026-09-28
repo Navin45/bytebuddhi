@@ -36,6 +36,8 @@ class ToolExecutionContext:
     user_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     execution: ExecutionContext | None = None
+    approval_registry: Any | None = None
+    event_sink: Any | None = None
 
     def __post_init__(self) -> None:
         self.metadata = auxiliary_metadata(self.metadata)
@@ -52,6 +54,8 @@ class ToolExecutionContext:
         workspace: Workspace,
         cancellation_token: asyncio.Event | None = None,
         metadata: dict[str, Any] | None = None,
+        approval_registry: Any | None = None,
+        event_sink: Any | None = None,
     ) -> "ToolExecutionContext":
         """Project a trusted ExecutionContext into a tool-scoped context."""
         return cls(
@@ -62,6 +66,8 @@ class ToolExecutionContext:
             user_id=execution.user_id_str,
             metadata=auxiliary_metadata(metadata),
             execution=execution,
+            approval_registry=approval_registry,
+            event_sink=event_sink,
         )
 
     @property

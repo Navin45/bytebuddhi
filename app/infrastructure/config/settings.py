@@ -1,4 +1,6 @@
-from pydantic import Field, PostgresDsn, RedisDsn
+import os
+
+from pydantic import Field, PostgresDsn, RedisDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -86,12 +88,6 @@ class Settings(BaseSettings):
     web_render_max_browser_instances: int = 1
     web_user_agent: str = "ByteBuddhi/0.1 (web-research; +https://github.com/bytebuddhi)"
 
-    # LangSmith
-    langchain_tracing_v2: bool = True
-    langchain_endpoint: str = "https://api.smith.langchain.com"
-    langchain_api_key: str | None = None
-    langchain_project: str = "bytebuddhi-dev"
-
     # CORS
     cors_origins: list[str] = Field(default=["http://localhost:3000", "http://localhost:5173"])
 
@@ -122,6 +118,13 @@ class Settings(BaseSettings):
     # Production hardening
     cancellation_backend: str = "local"  # local | redis
     max_concurrent_runs_per_user: int = 4
+    max_active_runs: int = Field(default=20, validation_alias="BYTEBUDDHI_MAX_ACTIVE_RUNS")
+    run_heartbeat_seconds: float = Field(default=15.0, validation_alias="BYTEBUDDHI_RUN_HEARTBEAT_SECONDS")
+    run_lease_timeout_seconds: float = Field(default=120.0, validation_alias="BYTEBUDDHI_RUN_LEASE_TIMEOUT_SECONDS")
+    reaper_interval_seconds: float = Field(default=30.0, validation_alias="BYTEBUDDHI_REAPER_INTERVAL_SECONDS")
+    worker_shutdown_grace_seconds: float = Field(
+        default=30.0, validation_alias="BYTEBUDDHI_WORKER_SHUTDOWN_GRACE_SECONDS"
+    )
     max_request_body_bytes: int = 1_048_576
     max_message_chars: int = 32_000
     llm_request_timeout_seconds: float = 120.0
@@ -145,6 +148,20 @@ class Settings(BaseSettings):
     oauth_post_login_redirect: str | None = None
     oauth_vscode_redirect: str | None = "vscode://bytebuddhi.bytebuddhi/oauth"
     oauth_cli_redirect: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_run_execution(self) -> "Settings":
+        if self.max_active_runs < 1:
+            raise ValueError("BYTEBUDDHI_MAX_ACTIVE_RUNS must be >= 1")
+        if self.run_heartbeat_seconds <= 0:
+            raise ValueError("BYTEBUDDHI_RUN_HEARTBEAT_SECONDS must be > 0")
+        if self.run_lease_timeout_seconds <= self.run_heartbeat_seconds:
+            raise ValueError("BYTEBUDDHI_RUN_LEASE_TIMEOUT_SECONDS must be greater than the heartbeat")
+        if self.reaper_interval_seconds <= 0:
+            raise ValueError("BYTEBUDDHI_REAPER_INTERVAL_SECONDS must be > 0")
+        if self.worker_shutdown_grace_seconds < 0:
+            raise ValueError("BYTEBUDDHI_WORKER_SHUTDOWN_GRACE_SECONDS must be >= 0")
+        return self
 
     @property
     def is_production(self) -> bool:
@@ -285,3 +302,15 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def _disable_hosted_trace_export() -> None:
+    """Model calls stay with the configured provider. Hosted trace export stays off."""
+    for name in list(os.environ):
+        upper = name.upper()
+        if upper.startswith("LANGCHAIN_") or (upper.startswith("LANG") and "SMITH" in upper):
+            os.environ.pop(name, None)
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+
+_disable_hosted_trace_export()

@@ -98,6 +98,53 @@ async def async_execute(
 
     include_runtime = args.command in {"run", "chat"}
     try:
+        from app.infrastructure.config.profile import apply_process_profile
+
+        apply_process_profile(getattr(args, "profile", None))
+        if args.command == "profile":
+            from app.interfaces.cli.profile_data import handle_profile
+
+            return handle_profile(args, json_mode=json_mode, stdout=stdout)
+        if args.command == "data":
+            from app.interfaces.cli.profile_data import handle_data
+
+            return handle_data(args, json_mode=json_mode, stdout=stdout, stderr=stderr)
+        if args.command == "tui":
+            from app.interfaces.tui.main import launch_tui
+
+            return await launch_tui(args, stdin=stdin, stderr=stderr, debug=debug)
+        if args.command == "update":
+            from app.interfaces.cli.update import handle_update
+
+            return handle_update(
+                check_only=bool(getattr(args, "check", False)),
+                do_rollback=bool(getattr(args, "rollback", False)),
+                channel=getattr(args, "channel", "stable") or "stable",
+                json_mode=json_mode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        if args.command == "uninstall":
+            from app.interfaces.cli.uninstall import handle_uninstall
+
+            return handle_uninstall(
+                purge=bool(getattr(args, "purge", False)),
+                json_mode=json_mode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        if args.command == "doctor":
+            from app.interfaces.cli.doctor import handle_doctor
+
+            return await _await_with_signals(
+                handle_doctor(
+                    json_mode=json_mode,
+                    export_path=getattr(args, "export", None),
+                    gateway_url=getattr(args, "gateway_url", None),
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            )
         if args.command in {"login", "logout"}:
             from app.interfaces.cli.oauth_login import login as oauth_login
             from app.interfaces.cli.oauth_login import logout as oauth_logout
@@ -112,6 +159,26 @@ async def async_execute(
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
+            )
+        if args.command == "gateway":
+            from app.interfaces.cli.gateway_dispatch import dispatch_gateway_admin
+
+            return await _await_with_signals(
+                dispatch_gateway_admin(args, json_mode=json_mode, debug=debug, stdout=stdout, stderr=stderr)
+            )
+        if app is None and not _use_embedded(args):
+            from app.interfaces.cli.gateway_dispatch import dispatch_via_gateway
+
+            return await _await_with_signals(
+                dispatch_via_gateway(
+                    args,
+                    json_mode=json_mode,
+                    quiet=quiet,
+                    debug=debug,
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
             )
         if app is not None:
             return await _await_with_signals(
@@ -156,6 +223,8 @@ def execute(
     json_mode = resolve_output_mode(args) == "json"
     quiet = is_quiet(args)
     debug = bool(getattr(args, "debug", False))
+    if getattr(args, "command", None) == "serve":
+        return _serve_foreground(args, stdout=stdout or sys.stdout, stderr=stderr or sys.stderr)
     try:
         return asyncio.run(
             async_execute(
@@ -179,3 +248,34 @@ def execute(
             stdout=stdout or sys.stdout,
             stderr=stderr or sys.stderr,
         )
+
+
+def _use_embedded(args: Namespace) -> bool:
+    """Embedded mode is explicit. Gateway failure must not select it."""
+    from app.interfaces.cli.gateway_dispatch import cli_error_from_gateway
+    from app.interfaces.gateway.config import resolve_execution_mode
+    from app.interfaces.gateway.errors import GatewayConfigError
+
+    try:
+        mode = resolve_execution_mode(
+            embedded_flag=bool(getattr(args, "embedded", False)),
+            gateway_flag=bool(getattr(args, "gateway", False)),
+        )
+    except GatewayConfigError as exc:
+        raise cli_error_from_gateway(exc) from exc
+    return mode == "embedded"
+
+
+def _serve_foreground(args: Namespace, *, stdout: TextIO, stderr: TextIO) -> int:
+    from app.interfaces.gateway.errors import GatewayConfigError
+    from app.interfaces.gateway.server import run_server
+
+    try:
+        return run_server(host=getattr(args, "host", None), port=getattr(args, "port", None))
+    except GatewayConfigError as exc:
+        from app.interfaces.cli.gateway_dispatch import cli_error_from_gateway
+
+        mapped = cli_error_from_gateway(exc)
+        return present_error(mapped, json_mode=False, debug=False, cause=None, stdout=stdout, stderr=stderr)
+    except KeyboardInterrupt:
+        return int(ExitCode.SUCCESS)

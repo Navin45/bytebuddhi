@@ -278,3 +278,69 @@ class MemoryItemModel(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
+
+
+class AgentRunModel(Base):
+    """Durable agent run. PostgreSQL is the source of truth for run state."""
+
+    __tablename__ = "agent_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    prompt: Mapped[str] = mapped_column(Text)
+    prompt_sha256: Mapped[str] = mapped_column(String(64))
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cancellation_requested: Mapped[bool] = mapped_column(default=False)
+    event_sequence: Mapped[int] = mapped_column(default=0)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    execution_attempt: Mapped[int] = mapped_column(default=0)
+    lease_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    lease_acquired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    events: Mapped[list["AgentRunEventModel"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", lazy="noload"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_agent_runs_user_idempotency"),
+        Index("ix_agent_runs_user_created", "user_id", "created_at"),
+        Index("ix_agent_runs_status_created", "status", "created_at"),
+        Index("ix_agent_runs_status_lease_expires", "status", "lease_expires_at"),
+    )
+
+
+class AgentRunEventModel(Base):
+    """Ordered public events for one run. Sequence is unique per run."""
+
+    __tablename__ = "agent_run_events"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True)
+    sequence: Mapped[int] = mapped_column()
+    event_type: Mapped[str] = mapped_column(String(64))
+    schema_version: Mapped[int] = mapped_column()
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    run: Mapped["AgentRunModel"] = relationship(back_populates="events", lazy="noload")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_agent_run_events_run_sequence"),
+        Index("ix_agent_run_events_run_sequence", "run_id", "sequence"),
+    )

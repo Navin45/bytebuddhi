@@ -132,6 +132,12 @@ temp/
 
 vscode-extension/node_modules/
 vscode-extension/out/
+desktop/node_modules/
+desktop/out/
+desktop/test-results/
+desktop/playwright-report/
+desktop/blob-report/
+*.tsbuildinfo
 *.pem
 *.key
 *.cert
