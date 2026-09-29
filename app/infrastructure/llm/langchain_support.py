@@ -18,7 +18,8 @@ def tool_call_from_mapping(tc: Any) -> ToolCall | None:
         return None
     raw_id = tc.get("id")
     name = tc.get("name") or ""
-    arguments = tc.get("args") if isinstance(tc.get("args"), dict) else {}
+    raw_args = tc.get("args")
+    arguments: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
     call_id = raw_id if isinstance(raw_id, str) else ""
     if not call_id and not name and not arguments:
         return None
@@ -91,7 +92,7 @@ def _tool_call_from_stream_chunk(tc: Any) -> ToolCall | None:
     raw_index = tc.get("index")
     args = tc.get("args")
     fragment = args if isinstance(args, str) else ""
-    arguments = args if isinstance(args, dict) else {}
+    arguments: dict[str, Any] = args if isinstance(args, dict) else {}
     call_id = raw_id if isinstance(raw_id, str) else ""
     index = raw_index if isinstance(raw_index, int) else None
     if not call_id and not name and not fragment and not arguments and index is None:

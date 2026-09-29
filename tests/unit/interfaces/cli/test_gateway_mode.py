@@ -104,10 +104,20 @@ def _install_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.interfaces.cli.gateway_dispatch._ensure_local_gateway", _ready)
 
 
-def _sign_in() -> None:
+def _sign_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.infrastructure.auth.jwt_handler import jwt_handler
+
+    user_id = uuid4()
     CredentialStore().save(
-        StoredCredentials(user_id=uuid4(), access_token="cli-access-token", refresh_token="cli-refresh-token")
+        StoredCredentials(user_id=user_id, access_token="cli-access-token", refresh_token="cli-refresh-token")
     )
+
+    def verify(token: str, token_type: str = "access") -> object:
+        if token in {"cli-access-token", "cli-refresh-token"}:
+            return user_id
+        return None
+
+    monkeypatch.setattr(jwt_handler, "verify_token", verify)
 
 
 def _embedded_app(stdout: io.StringIO) -> tuple[User, CliApp]:
@@ -146,7 +156,7 @@ def _embedded_app(stdout: io.StringIO) -> tuple[User, CliApp]:
 
 def test_run_uses_gateway_client_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch)
-    _sign_in()
+    _sign_in(monkeypatch)
     stdout = io.StringIO()
     args = build_parser().parse_args(["run", "--json", "Explain this repository"])
     code = execute(args, stdin=io.StringIO(), stdout=stdout, stderr=io.StringIO())
@@ -203,7 +213,7 @@ def test_execution_mode_env_selects_embedded(monkeypatch: pytest.MonkeyPatch) ->
 def test_gateway_failure_does_not_fall_back_to_embedded(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch)
     _Client.fail = True
-    _sign_in()
+    _sign_in(monkeypatch)
 
     def _boom(*_args: object, **_kwargs: object):
         raise AssertionError("embedded session started")
@@ -221,7 +231,7 @@ def test_gateway_failure_does_not_fall_back_to_embedded(monkeypatch: pytest.Monk
 
 def test_remote_gateway_and_no_start_flag_do_not_autostart(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch)
-    _sign_in()
+    _sign_in(monkeypatch)
 
     async def _forbidden(_stderr: object) -> None:
         raise AssertionError("auto-start")
@@ -235,7 +245,7 @@ def test_remote_gateway_and_no_start_flag_do_not_autostart(monkeypatch: pytest.M
 
 def test_cwd_against_remote_gateway_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch)
-    _sign_in()
+    _sign_in(monkeypatch)
     stderr = io.StringIO()
     args = build_parser().parse_args(["run", "--gateway-url", "https://gateway.example", "--cwd", "C:/repo", "hello"])
     code = execute(args, stdin=io.StringIO(), stdout=io.StringIO(), stderr=stderr)
@@ -246,7 +256,7 @@ def test_cwd_against_remote_gateway_is_rejected(monkeypatch: pytest.MonkeyPatch)
 
 def test_human_run_streams_deltas_without_a_json_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch)
-    _sign_in()
+    _sign_in(monkeypatch)
     stdout = io.StringIO()
     stderr = io.StringIO()
     args = build_parser().parse_args(["run", "Explain this repository"])
@@ -260,7 +270,7 @@ def test_human_run_streams_deltas_without_a_json_envelope(monkeypatch: pytest.Mo
 def test_stream_disconnect_does_not_submit_another_run(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch)
     _Client.stream_fail = True
-    _sign_in()
+    _sign_in(monkeypatch)
     stderr = io.StringIO()
     args = build_parser().parse_args(["run", "--json", "hello"])
     code = execute(args, stdin=io.StringIO(), stdout=io.StringIO(), stderr=stderr)
