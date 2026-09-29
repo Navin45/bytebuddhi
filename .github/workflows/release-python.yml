@@ -96,3 +96,7 @@ jobs:
         with:
           packages-dir: upload/
           skip-existing: true
+          # Reusable workflows stamp attestations with the caller (release.yml),
+          # while the trusted publisher is release-python.yml. PyPI then rejects
+          # the upload. GitHub provenance still comes from attest-build-provenance.
+          attestations: false
